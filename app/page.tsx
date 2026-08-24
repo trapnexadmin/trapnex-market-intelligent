@@ -156,7 +156,7 @@ export default function Page() {
             ["NIFTY MIDCAP 100", "58,420.75", "+0.85%"],
             ["NIFTY SMALLCAP 100", "18,320.40", "-0.57%"],
           ].map((x) => (
-            <div>
+            <div key={x[0]}>
               <small>{x[0]}</small>
               <strong>{x[1]}</strong>
               <em className={x[2].startsWith("-") ? "red" : "green"}>{x[2]}</em>
@@ -413,7 +413,7 @@ export default function Page() {
                     ["Momentum", 79],
                     ["Sector Balance", 68],
                   ].map((x) => (
-                    <p>
+                    <p key={x[0]}>
                       <span>{x[0]}</span>
                       <i>
                         <em style={{ width: `${x[1]}%` }} />
