@@ -1,96 +1,138 @@
 import type { BreadthInputRow, MarketBreadth } from "./types";
 
-const pct = (n: number, d: number) => d > 0 ? (n / d) * 100 : null;
-const clamp = (n: number) => Math.max(0, Math.min(100, n));
+const clamp = (value: number) => Math.max(0, Math.min(100, value));
+const percentage = (numerator: number, denominator: number) =>
+  denominator > 0 ? (numerator / denominator) * 100 : null;
 
 export function calculateBreadth(
   market: string,
   rows: BreadthInputRow[],
   calculatedAt = new Date(),
 ): MarketBreadth {
-  const valid = rows.filter((r) =>
-    Number.isFinite(r.price) &&
-    (r.previousClose == null || Number.isFinite(r.previousClose)),
-  );
+  const total = rows.length;
 
-  if (!valid.length) {
+  if (!total) {
     return {
-      market, total: 0, advancers: 0, decliners: 0, unchanged: 0,
+      market,
+      total: 0,
+      advancers: 0,
+      decliners: 0,
+      unchanged: 0,
       advanceDeclineRatio: null,
-      above20DmaPercent: null, above50DmaPercent: null, above200DmaPercent: null,
-      volumeAdvancingPercent: null, breadthThrust: null,
-      score: null, confidence: 0, status: "INSUFFICIENT_DATA",
+      above20DmaPercent: null,
+      above50DmaPercent: null,
+      above200DmaPercent: null,
+      volumeAdvancingPercent: null,
+      breadthThrust: null,
+      score: null,
+      confidence: 0,
+      coverage: { price: 0, dma20: 0, dma50: 0, dma200: 0, volume: 0 },
+      status: "INSUFFICIENT_DATA",
       calculatedAt: calculatedAt.toISOString(),
     };
   }
 
-  let advancers = 0, decliners = 0, unchanged = 0;
-  let valid20 = 0, above20 = 0, valid50 = 0, above50 = 0, valid200 = 0, above200 = 0;
-  let volumeCandidates = 0, advancingVolume = 0;
+  let advancers = 0;
+  let decliners = 0;
+  let unchanged = 0;
 
-  for (const row of valid) {
-    if (row.previousClose != null) {
-      if (row.price > row.previousClose) advancers++;
-      else if (row.price < row.previousClose) decliners++;
-      else unchanged++;
-    }
+  let valid20 = 0;
+  let above20 = 0;
+  let valid50 = 0;
+  let above50 = 0;
+  let valid200 = 0;
+  let above200 = 0;
 
-    if (row.dma20 != null) {
-      valid20++;
-      if (row.price > row.dma20) above20++;
-    }
-    if (row.dma50 != null) {
-      valid50++;
-      if (row.price > row.dma50) above50++;
-    }
-    if (row.dma200 != null) {
-      valid200++;
-      if (row.price > row.dma200) above200++;
+  let volumeDenominator = 0;
+  let volumeAdvancing = 0;
+
+  for (const row of rows) {
+    if (row.previousClose !== null) {
+      if (row.price > row.previousClose) advancers += 1;
+      else if (row.price < row.previousClose) decliners += 1;
+      else unchanged += 1;
     }
 
-    if (row.volume != null && row.averageVolume20 != null && row.previousClose != null) {
-      volumeCandidates++;
-      const advancing = row.price > row.previousClose;
-      if (advancing) advancingVolume += row.volume;
+    if (row.dma20 !== null) {
+      valid20 += 1;
+      if (row.price > row.dma20) above20 += 1;
+    }
+
+    if (row.dma50 !== null) {
+      valid50 += 1;
+      if (row.price > row.dma50) above50 += 1;
+    }
+
+    if (row.dma200 !== null) {
+      valid200 += 1;
+      if (row.price > row.dma200) above200 += 1;
+    }
+
+    if (
+      row.volume !== null &&
+      row.averageVolume20 !== null &&
+      row.previousClose !== null
+    ) {
+      volumeDenominator += row.volume;
+      if (row.price > row.previousClose) {
+        volumeAdvancing += row.volume;
+      }
     }
   }
 
-  const total = valid.length;
-  const directionCount = advancers + decliners + unchanged;
-  const ratio = decliners > 0 ? advancers / decliners : advancers > 0 ? advancers : null;
-  const above20Pct = pct(above20, valid20);
-  const above50Pct = pct(above50, valid50);
-  const above200Pct = pct(above200, valid200);
-  const volumePct = volumeCandidates > 0 ? (advancingVolume > 0 ? pct(
-    valid.filter(r => r.previousClose != null && r.price > (r.previousClose as number))
-      .reduce((sum, r) => sum + (r.volume ?? 0), 0),
-    valid.filter(r => r.volume != null && r.averageVolume20 != null)
-      .reduce((sum, r) => sum + (r.volume ?? 0), 0),
-  ) : 0) : null;
+  const priceCoverage = (advancers + decliners + unchanged) / total;
+  const above20Pct = percentage(above20, valid20);
+  const above50Pct = percentage(above50, valid50);
+  const above200Pct = percentage(above200, valid200);
+  const volumePct =
+    volumeDenominator > 0
+      ? (volumeAdvancing / volumeDenominator) * 100
+      : null;
 
-  const breadthThrust = directionCount > 0 ? (advancers / directionCount) * 100 : null;
+  const breadthThrust =
+    advancers + decliners > 0
+      ? (advancers / (advancers + decliners)) * 100
+      : null;
 
-  const components: number[] = [];
-  if (directionCount > 0) components.push((advancers / directionCount) * 100);
-  if (above20Pct != null) components.push(above20Pct);
-  if (above50Pct != null) components.push(above50Pct);
-  if (above200Pct != null) components.push(above200Pct);
-  if (volumePct != null) components.push(volumePct);
+  const componentScores = [
+    priceCoverage > 0 ? (advancers / Math.max(1, advancers + decliners + unchanged)) * 100 : null,
+    above20Pct,
+    above50Pct,
+    above200Pct,
+    volumePct,
+  ].filter((value): value is number => value !== null);
 
-  const score = components.length
-    ? Math.round((components.reduce((a, b) => a + b, 0) / components.length) * 10) / 10
+  const score = componentScores.length
+    ? clamp(componentScores.reduce((sum, value) => sum + value, 0) / componentScores.length)
     : null;
 
-  const coverage = [
-    directionCount / total,
-    valid20 / total,
-    valid50 / total,
-    valid200 / total,
-    volumeCandidates / total,
-  ];
-  const confidence = Math.round(clamp(
-    coverage.reduce((a, b) => a + b, 0) / coverage.length * 100,
-  ));
+  const coverage = {
+    price: Math.round(priceCoverage * 100),
+    dma20: total ? Math.round((valid20 / total) * 100) : 0,
+    dma50: total ? Math.round((valid50 / total) * 100) : 0,
+    dma200: total ? Math.round((valid200 / total) * 100) : 0,
+    volume: total
+      ? Math.round(
+          (rows.filter(
+            (row) =>
+              row.volume !== null &&
+              row.averageVolume20 !== null &&
+              row.previousClose !== null,
+          ).length /
+            total) *
+            100,
+        )
+      : 0,
+  };
+
+  const confidence = Math.round(
+    (coverage.price +
+      coverage.dma20 +
+      coverage.dma50 +
+      coverage.dma200 +
+      coverage.volume) /
+      5,
+  );
 
   return {
     market,
@@ -98,7 +140,8 @@ export function calculateBreadth(
     advancers,
     decliners,
     unchanged,
-    advanceDeclineRatio: ratio,
+    advanceDeclineRatio:
+      decliners > 0 ? advancers / decliners : advancers > 0 ? advancers : null,
     above20DmaPercent: above20Pct,
     above50DmaPercent: above50Pct,
     above200DmaPercent: above200Pct,
@@ -106,7 +149,8 @@ export function calculateBreadth(
     breadthThrust,
     score,
     confidence,
-    status: score == null ? "INSUFFICIENT_DATA" : "READY",
+    coverage,
+    status: score === null ? "INSUFFICIENT_DATA" : "READY",
     calculatedAt: calculatedAt.toISOString(),
   };
 }
