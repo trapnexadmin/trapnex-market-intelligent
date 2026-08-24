@@ -13,16 +13,16 @@ const replacements = [
     "caps.map(([n,s,c,state]:any)=><div key={n} className={s<55?'cap warn':'cap'}>",
   ],
   [
-    "sectors.map(([n,s,c]:any)=><div className=\"sector\">",
-    "sectors.map(([n,s,c]:any)=><div key={n} className=\"sector\">",
+    'sectors.map(([n,s,c]:any)=><div className="sector">',
+    'sectors.map(([n,s,c]:any)=><div key={n} className="sector">',
   ],
   [
-    "opportunities.map((o:any)=><div className=\"opp\">",
-    "opportunities.map((o:any)=><div key={o[0]} className=\"opp\">",
+    'opportunities.map((o:any)=><div className="opp">',
+    'opportunities.map((o:any)=><div key={o[0]} className="opp">',
   ],
   [
-    "dangers.map((d:any)=><div className=\"danger\">",
-    "dangers.map((d:any)=><div key={d[0]} className=\"danger\">",
+    'dangers.map((d:any)=><div className="danger">',
+    'dangers.map((d:any)=><div key={d[0]} className="danger">',
   ],
   [
     "[['Diversification',82],['Risk',71],['Quality',84],['Momentum',79],['Sector Balance',68]].map(x=><p>",
