@@ -10,8 +10,8 @@ export const providers: MarketDataProvider[] = [
   new IndianApiProvider(),
 ].sort((a, b) => a.priority - b.priority);
 
-const can = (p: MarketDataProvider, c: ProviderCapability) =>
-  p.capabilities.includes(c);
+const can = (provider: MarketDataProvider, capability: ProviderCapability) =>
+  provider.capabilities.includes(capability);
 
 export async function getProviderHealth() {
   return Promise.all(providers.map((provider) => provider.health()));
@@ -33,11 +33,7 @@ export async function resolveQuotes(symbols: string[]) {
         };
       }
     } catch (error) {
-      errors.push(
-        `${provider.name}: ${
-          error instanceof Error ? error.message : "unknown error"
-        }`,
-      );
+      errors.push(`${provider.name}: ${error instanceof Error ? error.message : "unknown provider error"}`);
     }
   }
 
@@ -49,35 +45,9 @@ export async function resolveQuotes(symbols: string[]) {
   };
 }
 
-/**
- * Compatibility adapter used by the existing intelligence/pulse route.
- * Provider-specific models stay behind the provider layer.
- */
-export async function getMarketSnapshots(symbols: string[]) {
-  const result = await resolveQuotes(symbols);
-
-  const rows: MarketSnapshot[] = result.quotes.map((quote) => ({
-    symbol: quote.symbol,
-    exchange: quote.exchange,
-    price: quote.price as number,
-    previousClose: quote.previousClose ?? undefined,
-    open: quote.open ?? undefined,
-    high: quote.high ?? undefined,
-    low: quote.low ?? undefined,
-    volume: quote.volume ?? undefined,
-    timestamp: quote.timestamp,
-  }));
-
-  return {
-    provider: result.provider,
-    rows,
-    fallbackUsed: result.fallbackUsed,
-    errors: result.errors,
-  };
-}
-
 export async function resolveIndices(symbols: string[]) {
   const candidates = providers.filter((p) => can(p, "indices"));
+  const errors: string[] = [];
 
   for (const provider of candidates) {
     try {
@@ -87,15 +57,71 @@ export async function resolveIndices(symbols: string[]) {
           provider: provider.name,
           indices,
           fallbackUsed: provider !== candidates[0],
+          errors,
         };
       }
-    } catch {}
+    } catch (error) {
+      errors.push(`${provider.name}: ${error instanceof Error ? error.message : "unknown provider error"}`);
+    }
   }
 
   return {
     provider: null,
     indices: [] as MarketIndexSnapshot[],
     fallbackUsed: false,
+    errors,
+  };
+}
+
+/**
+ * Pulse source resolver.
+ *
+ * IMPORTANT: an empty stock list does not mean "return no data".
+ * It means "build the market pulse from the best available market
+ * observations". Quotes are preferred; benchmark indices are the guaranteed
+ * fallback for a market-level pulse.
+ */
+export async function getMarketSnapshots(symbols: string[]) {
+  const quotes = await resolveQuotes(symbols);
+
+  if (quotes.quotes.length) {
+    return {
+      provider: quotes.provider,
+      rows: quotes.quotes
+        .filter((quote) => quote.price !== null)
+        .map((quote): MarketSnapshot => ({
+          symbol: quote.symbol,
+          exchange: quote.exchange,
+          price: quote.price as number,
+          previousClose: quote.previousClose ?? undefined,
+          open: quote.open ?? undefined,
+          high: quote.high ?? undefined,
+          low: quote.low ?? undefined,
+          volume: quote.volume ?? undefined,
+          timestamp: quote.timestamp,
+        })),
+      fallbackUsed: quotes.fallbackUsed,
+      errors: quotes.errors,
+    };
+  }
+
+  // A market pulse can still be calculated from NIFTY/BANK NIFTY benchmark
+  // observations when stock quotes are unavailable.
+  const indices = await resolveIndices(["NIFTY 50", "BANK NIFTY", "SENSEX"]);
+
+  return {
+    provider: indices.provider ?? quotes.provider,
+    rows: indices.indices
+      .filter((index) => index.value !== null && index.previousClose !== null)
+      .map((index): MarketSnapshot => ({
+        symbol: index.name,
+        exchange: "NSE",
+        price: index.value as number,
+        previousClose: index.previousClose as number,
+        timestamp: index.timestamp,
+      })),
+    fallbackUsed: quotes.fallbackUsed || Boolean(indices.fallbackUsed),
+    errors: [...quotes.errors, ...indices.errors],
   };
 }
 
