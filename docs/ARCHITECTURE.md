@@ -1,4 +1,5 @@
 # Architecture
+
 Retail-first UI, institutional-grade intelligence underneath.
 
 Market data → normalization → quality/freshness → Market Pulse → cap pulse → sector pulse → stock score → news/risk confirmation → opportunities → portfolio allocation → alerts.
@@ -7,4 +8,4 @@ Providers: NSE/BSE, Angel One SmartAPI, Indian Stock Market API, Finnhub, Alpha 
 
 Supabase PostgreSQL is the default database. Keep database access behind a repository layer for Local, DigitalOcean and AWS PostgreSQL later.
 
-Never expose API credentials in client code or NEXT_PUBLIC_* variables.
+Never expose API credentials in client code or NEXT*PUBLIC*\* variables.
