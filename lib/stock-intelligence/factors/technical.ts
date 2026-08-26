@@ -2,18 +2,18 @@ import type { Candle } from "./types";
 
 const clamp = (n: number) => Math.max(0, Math.min(100, n));
 
-function sma(values: number[], period: number): number | null {
+function sma(values: number[], period: number) {
   if (values.length < period) return null;
   const slice = values.slice(-period);
   return slice.reduce((a, b) => a + b, 0) / period;
 }
 
-function rsi(closes: number[], period = 14): number | null {
+function rsi(closes: number[], period = 14) {
   if (closes.length <= period) return null;
   let gain = 0;
   let loss = 0;
 
-  for (let i = closes.length - period; i < closes.length; i++) {
+  for (let i = closes.length - period; i < closes.length; i += 1) {
     const change = closes[i] - closes[i - 1];
     if (change >= 0) gain += change;
     else loss += Math.abs(change);
@@ -46,23 +46,19 @@ export function calculateTechnicalStructure(candles: Candle[]): number | null {
 
   let score = 50;
 
-  if (current > sma20) score += 12;
-  else score -= 12;
-
-  if (sma20 > sma50) score += 15;
-  else score -= 15;
+  score += current > sma20 ? 12 : -12;
+  score += sma20 > sma50 ? 15 : -15;
 
   if (currentRsi >= 55 && currentRsi <= 70) score += 12;
   else if (currentRsi < 35 || currentRsi > 80) score -= 8;
 
-  const recent = valid.slice(-20);
-  const volumeRows = recent.filter((c) => c.volume !== null);
+  const volumeRows = valid.slice(-20).filter((c) => c.volume !== null);
   if (volumeRows.length >= 10) {
-    const avgVolume =
-      volumeRows.reduce((sum, c) => sum + (c.volume as number), 0) /
+    const avg =
+      volumeRows.reduce((sum, candle) => sum + (candle.volume as number), 0) /
       volumeRows.length;
-    const lastVolume = volumeRows.at(-1)?.volume ?? 0;
-    if (lastVolume >= avgVolume) score += 8;
+    const last = volumeRows.at(-1)?.volume ?? 0;
+    if ((last as number) >= avg) score += 8;
   }
 
   return Math.round(clamp(score) * 10) / 10;

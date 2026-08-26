@@ -1,7 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Activity, AlertTriangle, BarChart3, Building2, Newspaper, ShieldAlert, Sparkles, WalletCards } from "lucide-react";
+import {
+  Activity,
+  AlertTriangle,
+  BarChart3,
+  Building2,
+  Newspaper,
+  ShieldAlert,
+  Sparkles,
+  WalletCards,
+} from "lucide-react";
 
 type Factor = {
   key: string;
@@ -15,13 +24,16 @@ type Payload = {
   status: string;
   symbol: string;
   instrument?: { symbol?: string; name?: string; exch_seg?: string } | null;
-  quote?: { price?: number | null; previousClose?: number | null; exchange?: string } | null;
+  quote?: { price?: number | null; exchange?: string } | null;
   intelligence?: { score: number | null; confidence: number; factors: Factor[] } | null;
   readiness?: Record<string, boolean>;
   message?: string;
 };
 
-const icons: Record<string, React.ComponentType<{ size?: number }>> = {
+const factorIcons: Record<
+  string,
+  React.ComponentType<{ size?: number }>
+> = {
   fundamentalQuality: Building2,
   technicalStructure: Activity,
   valuation: BarChart3,
@@ -31,105 +43,109 @@ const icons: Record<string, React.ComponentType<{ size?: number }>> = {
   riskTrapShield: ShieldAlert,
 };
 
-export default function StockIntelligencePanel({ symbol }: { symbol: string }) {
+export default function StockIntelligencePanel({
+  symbol,
+}: {
+  symbol: string;
+}) {
   const [payload, setPayload] = useState<Payload | null>(null);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    let active = true;
+    let mounted = true;
 
-    async function load() {
-      setLoading(true);
-      try {
-        const response = await fetch(
-          `/api/stocks/intelligence?symbol=${encodeURIComponent(symbol)}`,
-          { cache: "no-store" },
-        );
-        const data = (await response.json()) as Payload;
-        if (active) setPayload(data);
-      } finally {
-        if (active) setLoading(false);
-      }
-    }
+    fetch(`/api/stocks/intelligence?symbol=${encodeURIComponent(symbol)}`, {
+      cache: "no-store",
+    })
+      .then((res) => res.json())
+      .then((data: Payload) => {
+        if (mounted) setPayload(data);
+      })
+      .catch(() => {
+        if (mounted)
+          setPayload({
+            status: "UNAVAILABLE",
+            symbol,
+            intelligence: null,
+          });
+      });
 
-    void load();
     return () => {
-      active = false;
+      mounted = false;
     };
   }, [symbol]);
 
   const factors = payload?.intelligence?.factors ?? [];
-  const score = payload?.intelligence?.score ?? null;
-  const confidence = payload?.intelligence?.confidence ?? 0;
-
   const readiness = useMemo(
     () => Object.entries(payload?.readiness ?? {}),
     [payload],
   );
 
   return (
-    <main className="stock-page">
-      <div className="stock-hero">
+    <div className="stock-terminal">
+      <header className="stock-header">
         <div>
-          <span className="stock-eyebrow">STOCK TERMINAL · TRAPNEX INTELLIGENCE</span>
+          <span className="eyebrow">STOCK TERMINAL · TRAPNEX INTELLIGENCE</span>
           <h1>{payload?.instrument?.name ?? symbol}</h1>
-          <p>{payload?.instrument?.symbol ?? symbol} · {payload?.quote?.exchange ?? "NSE"}</p>
-        </div>
-        <div className="stock-price">
-          <small>LIVE PRICE</small>
-          <strong>{payload?.quote?.price != null ? `₹${payload.quote.price.toLocaleString("en-IN")}` : "—"}</strong>
-        </div>
-      </div>
-
-      <section className="stock-score-panel">
-        <div className="score-block">
-          <span>TRAPNEX STOCK INTELLIGENCE</span>
-          <strong>{score === null ? "—" : score}</strong>
-          <small>/100</small>
-          <b>{payload?.status ?? (loading ? "LOADING" : "INSUFFICIENT_DATA")}</b>
-          <em>Confidence {confidence}%</em>
-        </div>
-
-        <div className="score-explanation">
-          <h2>Explainable factor breakdown</h2>
           <p>
-            Trapnex only scores factors that have real inputs. Missing providers
-            are displayed as unavailable rather than replaced with guessed values.
+            {payload?.instrument?.symbol ?? symbol} ·{" "}
+            {payload?.quote?.exchange ?? "NSE"}
           </p>
-          <div className="factor-grid">
-            {factors.map((factor) => {
-              const Icon = icons[factor.key] ?? AlertTriangle;
-              return (
-                <div className="factor-card" key={factor.key}>
-                  <Icon size={16} />
-                  <div>
-                    <span>{factor.label}</span>
-                    <i>
-                      <em style={{ width: `${factor.score ?? 0}%` }} />
-                    </i>
-                  </div>
-                  <strong>{factor.score ?? "—"}</strong>
+        </div>
+
+        <div className="stock-live-price">
+          <small>LIVE PRICE</small>
+          <strong>
+            {payload?.quote?.price != null
+              ? `₹${payload.quote.price.toLocaleString("en-IN")}`
+              : "—"}
+          </strong>
+        </div>
+      </header>
+
+      <section className="stock-score">
+        <div>
+          <span>TRAPNEX STOCK INTELLIGENCE</span>
+          <strong>
+            {payload?.intelligence?.score ?? "—"}
+            <small>/100</small>
+          </strong>
+          <b>{payload?.status ?? "LOADING"}</b>
+          <em>
+            Confidence: {payload?.intelligence?.confidence ?? 0}%
+          </em>
+        </div>
+
+        <div className="factor-grid">
+          {factors.map((factor) => {
+            const Icon = factorIcons[factor.key] ?? AlertTriangle;
+
+            return (
+              <article key={factor.key} className="factor-card">
+                <Icon size={16} />
+                <div>
+                  <span>{factor.label}</span>
+                  <i>
+                    <em style={{ width: `${factor.score ?? 0}%` }} />
+                  </i>
                 </div>
-              );
-            })}
-          </div>
+                <strong>{factor.score ?? "—"}</strong>
+              </article>
+            );
+          })}
         </div>
       </section>
 
-      <section className="readiness-panel">
-        <h2>Intelligence readiness</h2>
-        <div className="readiness-grid">
+      <section className="readiness">
+        <h2>Factor readiness</h2>
+        <div>
           {readiness.map(([name, ready]) => (
-            <div key={name}>
-              <span>{name}</span>
-              <b className={ready ? "ready" : "pending"}>
-                {ready ? "READY" : "PENDING"}
-              </b>
-            </div>
+            <span key={name}>
+              {name}: {ready ? "READY" : "PENDING"}
+            </span>
           ))}
         </div>
         {payload?.message ? <p>{payload.message}</p> : null}
       </section>
-    </main>
+    </div>
   );
 }

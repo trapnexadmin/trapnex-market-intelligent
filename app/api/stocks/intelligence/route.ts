@@ -1,67 +1,44 @@
 import { NextRequest, NextResponse } from "next/server";
 import { findInstrument } from "@/lib/providers/angelone/instrument-master";
 import { getLtpData } from "@/lib/providers/angelone/quotes";
-import { buildStockIntelligence } from "@/lib/stock-intelligence/engine";
+import { calculateStockIntelligenceScore } from "@/lib/stock-intelligence/calculate";
+import { calculateFundamentalQuality } from "@/lib/stock-intelligence/factors/fundamental";
+import { calculateValuation } from "@/lib/stock-intelligence/factors/valuation";
+import { calculateInstitutionalFlow } from "@/lib/stock-intelligence/factors/institutional";
+import { calculateTechnicalStructure } from "@/lib/stock-intelligence/factors/technical";
+import type { Candle } from "@/lib/stock-intelligence/factors/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function emptyInput(symbol: string) {
-  return buildStockIntelligence({
-    symbol,
-    candles: [],
-    fundamentals: {
-      revenueGrowth: null,
-      earningsGrowth: null,
-      roe: null,
-      roce: null,
-      debtToEquity: null,
-      operatingCashFlow: null,
-      freeCashFlow: null,
-      profitMargin: null,
-    },
-    valuation: {
-      pe: null,
-      pb: null,
-      evEbitda: null,
-      earningsGrowth: null,
-      historicalPePercentile: null,
-    },
-    institutionalFlow: {
-      fiiNet: null,
-      diiNet: null,
-      deliveryRatio: null,
-      institutionalOwnershipChange: null,
-    },
+function blankFactors() {
+  return {
+    fundamentalQuality: null,
+    technicalStructure: null,
+    valuation: null,
+    institutionalFlow: null,
     sectorAlignment: null,
     newsEvent: null,
     riskTrapShield: null,
-  });
+  };
 }
 
 export async function GET(request: NextRequest) {
-  const rawSymbol = request.nextUrl.searchParams.get("symbol")?.trim();
-
-  if (!rawSymbol) {
+  const raw = request.nextUrl.searchParams.get("symbol")?.trim();
+  if (!raw) {
     return NextResponse.json(
       { status: "INVALID_REQUEST", message: "symbol is required" },
       { status: 400 },
     );
   }
 
-  const symbol = rawSymbol.toUpperCase();
-  const instrumentSymbol = symbol.endsWith("-EQ") ? symbol : `${symbol}-EQ`;
+  const symbol = raw.toUpperCase();
+  const target = symbol.endsWith("-EQ") ? symbol : `${symbol}-EQ`;
 
   try {
     const instrument =
-      (await findInstrument({
-        symbol: instrumentSymbol,
-        exchangeSegment: "nse_cm",
-      })) ??
-      (await findInstrument({
-        symbol: instrumentSymbol,
-        exchangeSegment: "bse_cm",
-      }));
+      (await findInstrument({ symbol: target, exchangeSegment: "nse_cm" })) ??
+      (await findInstrument({ symbol: target, exchangeSegment: "bse_cm" }));
 
     let quote = null;
     if (instrument) {
@@ -76,35 +53,44 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const intelligence = buildStockIntelligence({
-      ...emptyInput(symbol),
-      candles: [],
-      fundamentals: {
-        revenueGrowth: null,
-        earningsGrowth: null,
-        roe: null,
-        roce: null,
-        debtToEquity: null,
-        operatingCashFlow: null,
-        freeCashFlow: null,
-        profitMargin: null,
-      },
-      valuation: {
-        pe: null,
-        pb: null,
-        evEbitda: null,
-        earningsGrowth: null,
-        historicalPePercentile: null,
-      },
-      institutionalFlow: {
-        fiiNet: null,
-        diiNet: null,
-        deliveryRatio: null,
-        institutionalOwnershipChange: null,
-      },
-      sectorAlignment: null,
-      newsEvent: null,
-      riskTrapShield: null,
+    // Real factor calculators are wired here, but remain null until actual
+    // provider snapshots are supplied. No synthetic inputs are created.
+    const fundamentals = calculateFundamentalQuality({
+      revenueGrowth: null,
+      earningsGrowth: null,
+      roe: null,
+      roce: null,
+      debtToEquity: null,
+      operatingCashFlow: null,
+      freeCashFlow: null,
+      profitMargin: null,
+    });
+
+    const valuation = calculateValuation({
+      pe: null,
+      pb: null,
+      evEbitda: null,
+      earningsGrowth: null,
+      historicalPePercentile: null,
+    });
+
+    const institutionalFlow = calculateInstitutionalFlow({
+      fiiNet: null,
+      diiNet: null,
+      deliveryRatio: null,
+      institutionalOwnershipChange: null,
+    });
+
+    const candles: Candle[] = [];
+    const technical = calculateTechnicalStructure(candles);
+
+    const intelligence = calculateStockIntelligenceScore({
+      symbol,
+      ...blankFactors(),
+      fundamentalQuality: fundamentals,
+      technicalStructure: technical,
+      valuation,
+      institutionalFlow,
     });
 
     return NextResponse.json({
@@ -115,10 +101,10 @@ export async function GET(request: NextRequest) {
       intelligence,
       readiness: {
         liveQuote: Boolean(quote),
-        technical: false,
-        fundamentals: false,
-        valuation: false,
-        institutionalFlow: false,
+        technical: technical !== null,
+        fundamentals: fundamentals !== null,
+        valuation: valuation !== null,
+        institutionalFlow: institutionalFlow !== null,
         sectorAlignment: false,
         newsEvent: false,
         riskTrapShield: false,
@@ -129,12 +115,18 @@ export async function GET(request: NextRequest) {
       checkedAt: new Date().toISOString(),
     });
   } catch (error) {
-    return NextResponse.json({
-      status: "UNAVAILABLE",
-      symbol,
-      intelligence: null,
-      message: error instanceof Error ? error.message : "Stock intelligence unavailable",
-      checkedAt: new Date().toISOString(),
-    }, { status: 503 });
+    return NextResponse.json(
+      {
+        status: "UNAVAILABLE",
+        symbol,
+        intelligence: null,
+        message:
+          error instanceof Error
+            ? error.message
+            : "Stock intelligence unavailable",
+        checkedAt: new Date().toISOString(),
+      },
+      { status: 503 },
+    );
   }
 }
