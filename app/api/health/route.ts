@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
-import { providerHealth } from '@/lib/providers/registry';
+import { getProviderHealth } from '@/lib/providers/registry';
 
 export async function GET() {
-  const providers = await providerHealth();
+  const providers = await getProviderHealth();
   const ready = providers.filter((p) => p.status === 'READY').length;
   return NextResponse.json({
     service: 'trapnex-market-intelligence',

@@ -1,14 +1,29 @@
 import Link from "next/link";
 
+const examples = [
+  ["RELIANCE", "Reliance Industries"],
+  ["TCS", "Tata Consultancy Services"],
+  ["M&M", "Mahindra & Mahindra"],
+];
+
 export default function StocksPage() {
   return (
     <main className="page-shell">
-      <h1>Stocks</h1>
-      <p>Search and open a stock intelligence workspace.</p>
+      <div className="page-header">
+        <span>DISCOVER · STOCKS</span>
+        <h1>Stock Intelligence</h1>
+        <p>Search a company and open its Trapnex intelligence workspace.</p>
+      </div>
       <div className="page-card">
-        <Link href="/stocks/RELIANCE">Open RELIANCE</Link>
-        <Link href="/stocks/TCS">Open TCS</Link>
-        <Link href="/stocks/M%26M">Open M&amp;M</Link>
+        <h2>Open stock workspace</h2>
+        <div className="stock-links">
+          {examples.map(([symbol, name]) => (
+            <Link key={symbol} href={`/stocks/${encodeURIComponent(symbol)}`}>
+              <strong>{symbol}</strong>
+              <span>{name}</span>
+            </Link>
+          ))}
+        </div>
       </div>
     </main>
   );

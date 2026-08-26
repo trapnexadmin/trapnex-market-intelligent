@@ -128,7 +128,7 @@ export class IndianApiProvider implements MarketDataProvider {
         timestamp: timestamp(row.date, row.time),
         provider: this.name,
       }))
-      .filter((row) => row.value !== null);
+      .filter((row: { value: null; }) => row.value !== null);
   }
 
   async getBreadth(_market: string): Promise<BreadthSnapshot | null> {
