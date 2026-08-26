@@ -1,3 +1,14 @@
 export default function DangerPage() {
-  return <main className="page-shell"><h1>Danger Radar</h1><p>Coming with the News/Risk intelligence phase.</p></main>;
+  return (
+    <main className="page-shell">
+      <div className="page-header">
+        <span>INTELLIGENCE · RISK</span>
+        <h1>Danger Radar</h1>
+        <p>News-driven impact and trap-risk signal foundation.</p>
+      </div>
+      <div className="page-card">
+        <p>API: <code>/api/danger?symbol=RELIANCE</code></p>
+      </div>
+    </main>
+  );
 }
