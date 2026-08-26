@@ -6,31 +6,15 @@ import { calculateFundamentalQuality } from "@/lib/stock-intelligence/factors/fu
 import { calculateValuation } from "@/lib/stock-intelligence/factors/valuation";
 import { calculateInstitutionalFlow } from "@/lib/stock-intelligence/factors/institutional";
 import { calculateTechnicalStructure } from "@/lib/stock-intelligence/factors/technical";
+import { getFundamentalValuationInputs } from "@/lib/stock-intelligence/integration/provider-factors";
 import type { Candle } from "@/lib/stock-intelligence/factors/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function blankFactors() {
-  return {
-    fundamentalQuality: null,
-    technicalStructure: null,
-    valuation: null,
-    institutionalFlow: null,
-    sectorAlignment: null,
-    newsEvent: null,
-    riskTrapShield: null,
-  };
-}
-
 export async function GET(request: NextRequest) {
   const raw = request.nextUrl.searchParams.get("symbol")?.trim();
-  if (!raw) {
-    return NextResponse.json(
-      { status: "INVALID_REQUEST", message: "symbol is required" },
-      { status: 400 },
-    );
-  }
+  if (!raw) return NextResponse.json({ status: "INVALID_REQUEST", message: "symbol is required" }, { status: 400 });
 
   const symbol = raw.toUpperCase();
   const target = symbol.endsWith("-EQ") ? symbol : `${symbol}-EQ`;
@@ -48,49 +32,30 @@ export async function GET(request: NextRequest) {
           tradingsymbol: instrument.symbol,
           symboltoken: instrument.token,
         });
-      } catch {
-        quote = null;
-      }
+      } catch {}
     }
 
-    // Real factor calculators are wired here, but remain null until actual
-    // provider snapshots are supplied. No synthetic inputs are created.
-    const fundamentals = calculateFundamentalQuality({
-      revenueGrowth: null,
-      earningsGrowth: null,
-      roe: null,
-      roce: null,
-      debtToEquity: null,
-      operatingCashFlow: null,
-      freeCashFlow: null,
-      profitMargin: null,
-    });
+    const providerInputs = await getFundamentalValuationInputs(symbol);
 
-    const valuation = calculateValuation({
-      pe: null,
-      pb: null,
-      evEbitda: null,
-      earningsGrowth: null,
-      historicalPePercentile: null,
-    });
-
+    const fundamentalQuality = calculateFundamentalQuality(providerInputs.fundamentals);
+    const valuation = calculateValuation(providerInputs.valuation);
     const institutionalFlow = calculateInstitutionalFlow({
       fiiNet: null,
       diiNet: null,
       deliveryRatio: null,
       institutionalOwnershipChange: null,
     });
-
-    const candles: Candle[] = [];
-    const technical = calculateTechnicalStructure(candles);
+    const technicalStructure = calculateTechnicalStructure([] as Candle[]);
 
     const intelligence = calculateStockIntelligenceScore({
       symbol,
-      ...blankFactors(),
-      fundamentalQuality: fundamentals,
-      technicalStructure: technical,
+      fundamentalQuality,
+      technicalStructure,
       valuation,
       institutionalFlow,
+      sectorAlignment: null,
+      newsEvent: null,
+      riskTrapShield: null,
     });
 
     return NextResponse.json({
@@ -99,34 +64,24 @@ export async function GET(request: NextRequest) {
       instrument,
       quote,
       intelligence,
-      readiness: {
-        liveQuote: Boolean(quote),
-        technical: technical !== null,
-        fundamentals: fundamentals !== null,
-        valuation: valuation !== null,
-        institutionalFlow: institutionalFlow !== null,
-        sectorAlignment: false,
-        newsEvent: false,
-        riskTrapShield: false,
+      sources: {
+        fundamentals: providerInputs.errors.length ? "DEGRADED" : "LIVE",
+        technical: "PENDING",
+        institutionalFlow: "PENDING",
+        sectorAlignment: "PENDING",
+        newsEvent: "PENDING",
+        riskTrapShield: "PENDING",
       },
-      message: intelligence.status === "INSUFFICIENT_DATA"
-        ? "Stock identity and live quote resolution are available where configured; intelligence factors are still awaiting their real data adapters."
-        : undefined,
+      providerErrors: providerInputs.errors,
       checkedAt: new Date().toISOString(),
     });
   } catch (error) {
-    return NextResponse.json(
-      {
-        status: "UNAVAILABLE",
-        symbol,
-        intelligence: null,
-        message:
-          error instanceof Error
-            ? error.message
-            : "Stock intelligence unavailable",
-        checkedAt: new Date().toISOString(),
-      },
-      { status: 503 },
-    );
+    return NextResponse.json({
+      status: "UNAVAILABLE",
+      symbol,
+      intelligence: null,
+      message: error instanceof Error ? error.message : "Stock intelligence unavailable",
+      checkedAt: new Date().toISOString(),
+    }, { status: 503 });
   }
 }
