@@ -17,6 +17,12 @@ export interface NewsEvent {
   quality: NewsQuality;
 }
 
+export interface ScoredNewsEvent extends NewsEvent {
+  newsScore: number | null;
+  riskScore: number | null;
+  reasons: string[];
+}
+
 export interface DangerSignal {
   symbol: string | null;
   scope: NewsScope;

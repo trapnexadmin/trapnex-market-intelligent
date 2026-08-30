@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCompanyNewsEvents } from "@/lib/news-intelligence/finnhub";
+import { scoreNewsEvent } from "@/lib/news-intelligence/score";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,19 +17,23 @@ export async function GET(request: NextRequest) {
 
   try {
     const events = await getCompanyNewsEvents(symbol);
+
     return NextResponse.json({
       status: events.length ? "LIVE" : "INSUFFICIENT_DATA",
       symbol,
-      events,
+      events: events.map(scoreNewsEvent),
       checkedAt: new Date().toISOString(),
     });
   } catch (error) {
-    return NextResponse.json({
-      status: "UNAVAILABLE",
-      symbol,
-      events: [],
-      message: error instanceof Error ? error.message : "News unavailable",
-      checkedAt: new Date().toISOString(),
-    }, { status: 503 });
+    return NextResponse.json(
+      {
+        status: "UNAVAILABLE",
+        symbol,
+        events: [],
+        message: error instanceof Error ? error.message : "News unavailable",
+        checkedAt: new Date().toISOString(),
+      },
+      { status: 503 },
+    );
   }
 }
