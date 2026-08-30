@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { aggregateProviderContext } from "@/lib/opportunity/aggregate";
+import { getAngelOneHistoricalContext } from "@/lib/opportunity/historical-context";
 import { getLiveOpportunityContext } from "@/lib/opportunity/live-context";
 import { INDIA_LIQUID_UNIVERSE } from "@/lib/opportunity/universe";
 
@@ -14,13 +15,45 @@ export async function GET(request: NextRequest) {
     symbols.map(async (symbol) => {
       try {
         const live = await getLiveOpportunityContext(symbol);
-        const opportunity = aggregateProviderContext(symbol, live.context, []);
+        const historical = await getAngelOneHistoricalContext(symbol);
+
+        const context = {
+          ...live.context,
+          quote: historical.quote
+            ? {
+                symbol: historical.quote.symbol,
+                price: historical.quote.price,
+                changePct: null,
+                volume: null,
+                provider: historical.quote.provider,
+                asOf: historical.quote.asOf,
+              }
+            : live.context.quote,
+          entry: historical.entry,
+          stopLoss: historical.stopLoss,
+          target: historical.target,
+          sources: [...new Set([...live.context.sources, ...historical.sources])],
+          errors: [...live.context.errors, ...historical.errors],
+        };
+
+        const opportunity = aggregateProviderContext(
+          symbol,
+          context,
+          historical.candles,
+        );
+
         return {
           symbol,
           opportunity,
           providerStatus: live.providerStatus,
-          sources: live.context.sources,
-          errors: live.context.errors,
+          sources: context.sources,
+          errors: context.errors,
+          technical: {
+            candleCount: historical.candles.length,
+            entry: historical.entry,
+            stopLoss: historical.stopLoss,
+            target: historical.target,
+          },
         };
       } catch (error) {
         return {
@@ -31,6 +64,12 @@ export async function GET(request: NextRequest) {
           errors: [
             error instanceof Error ? error.message : "PROVIDER_ERROR",
           ],
+          technical: {
+            candleCount: 0,
+            entry: null,
+            stopLoss: null,
+            target: null,
+          },
         };
       }
     }),
@@ -58,12 +97,6 @@ export async function GET(request: NextRequest) {
           item.opportunity.decision === "INSUFFICIENT_DATA",
       )
       .map((item) => item.symbol),
-    providerResults: results.map((item) => ({
-      symbol: item.symbol,
-      providerStatus: item.providerStatus,
-      sources: item.sources,
-      errors: item.errors,
-    })),
     checkedAt: new Date().toISOString(),
   });
 }

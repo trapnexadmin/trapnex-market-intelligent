@@ -2,6 +2,7 @@ import { calculateOpportunity } from "./calculate";
 import type { Opportunity } from "./types";
 import type { ProviderContext } from "./provider-adapters";
 import { buildTechnicalPlan } from "./technical-plan";
+import { deriveReturnModel } from "./return-model";
 
 export function aggregateProviderContext(
   symbol: string,
@@ -19,15 +20,11 @@ export function aggregateProviderContext(
         }
       : buildTechnicalPlan(candles);
 
-  const expectedReturnPct =
-    plan.entry !== null && plan.target !== null && plan.entry > 0
-      ? ((plan.target - plan.entry) / plan.entry) * 100
-      : null;
-
-  const downsidePct =
-    plan.entry !== null && plan.stopLoss !== null && plan.entry > 0
-      ? ((plan.entry - plan.stopLoss) / plan.entry) * 100
-      : null;
+  const returns = deriveReturnModel(
+    plan.entry,
+    plan.target,
+    plan.stopLoss,
+  );
 
   return calculateOpportunity({
     symbol,
@@ -35,8 +32,8 @@ export function aggregateProviderContext(
     stockConfidence: context.stockConfidence,
     marketPulse: context.marketPulse,
     sectorPulse: context.sectorPulse,
-    expectedReturnPct,
-    downsidePct,
+    expectedReturnPct: returns.expectedReturnPct,
+    downsidePct: returns.downsidePct,
     riskShield: context.riskShield,
     liquidityScore: context.liquidityScore,
   });

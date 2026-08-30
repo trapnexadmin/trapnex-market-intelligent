@@ -6,14 +6,23 @@ import OpportunityTable from "@/components/opportunities/OpportunityTable";
 export default function OpportunitiesPage() {
   const [items, setItems] = useState<any[]>([]);
   const [status, setStatus] = useState("LOADING");
-  const [providers, setProviders] = useState<any[]>([]);
+  const [providerSummary, setProviderSummary] = useState<any[]>([]);
 
   useEffect(() => {
     fetch("/api/opportunities", { cache: "no-store" })
       .then((response) => response.json())
       .then((data) => {
         setItems(data.ranked ?? []);
-        setProviders(data.providerResults ?? []);
+        setProviderSummary(
+          (data.ranked ?? []).map((item: any) => ({
+            symbol: item.symbol,
+            sources: item.sources ?? [],
+            candleCount: item.technical?.candleCount ?? 0,
+            entry: item.technical?.entry ?? null,
+            stopLoss: item.technical?.stopLoss ?? null,
+            target: item.technical?.target ?? null,
+          })),
+        );
         setStatus(data.status ?? "UNAVAILABLE");
       })
       .catch(() => setStatus("UNAVAILABLE"));
@@ -24,7 +33,7 @@ export default function OpportunitiesPage() {
       <div className="page-header">
         <span>DISCOVER · OPPORTUNITIES</span>
         <h1>Opportunity Engine</h1>
-        <p>Provider-backed, risk-adjusted screening for 10%+ opportunities.</p>
+        <p>Real price/history context with strict 10%+ screening.</p>
         <strong>{status}</strong>
       </div>
 
@@ -37,15 +46,13 @@ export default function OpportunitiesPage() {
       </section>
 
       <section className="page-card">
-        <h2>Provider diagnostics</h2>
-        {providers.map((item) => (
+        <h2>Technical data provenance</h2>
+        {providerSummary.map((item) => (
           <div key={item.symbol}>
             <strong>{item.symbol}</strong>
             <span>
               {" "}
-              {item.sources?.length
-                ? item.sources.join(", ")
-                : "No normalized source"}
+              {item.sources.join(", ") || "No source"} · {item.candleCount} candles
             </span>
           </div>
         ))}
