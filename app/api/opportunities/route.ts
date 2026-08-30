@@ -1,36 +1,40 @@
-import { NextRequest,NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { calculateOpportunity } from "@/lib/opportunity/calculate";
 
-export const runtime="nodejs";
-export const dynamic="force-dynamic";
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-export async function GET(request:NextRequest){
-  const symbol=request.nextUrl.searchParams.get("symbol")?.trim().toUpperCase();
+export async function GET(request: NextRequest) {
+  const symbol = request.nextUrl.searchParams.get("symbol")?.trim().toUpperCase();
 
-  if(!symbol){
+  if (!symbol) {
     return NextResponse.json({
-      status:"INSUFFICIENT_DATA",
-      opportunities:[],
-      message:"Verified stock, market, sector, risk and return inputs are required.",
-      checkedAt:new Date().toISOString()
+      status: "INSUFFICIENT_DATA",
+      opportunities: [],
+      message:
+        "Verified stock, market, sector, risk and return inputs are required.",
+      checkedAt: new Date().toISOString(),
     });
   }
 
-  const opportunity=calculateOpportunity({
+  const opportunity = calculateOpportunity({
     symbol,
-    stockScore:null,
-    stockConfidence:0,
-    marketPulse:null,
-    sectorPulse:null,
-    expectedReturnPct:null,
-    downsidePct:null,
-    riskShield:null,
-    liquidityScore:null,
+    stockScore: null,
+    stockConfidence: 0,
+    marketPulse: null,
+    sectorPulse: null,
+    expectedReturnPct: null,
+    downsidePct: null,
+    riskShield: null,
+    liquidityScore: null,
   });
 
   return NextResponse.json({
-    status:opportunity.decision==="INSUFFICIENT_DATA"?"INSUFFICIENT_DATA":"READY",
+    status:
+      opportunity.decision === "INSUFFICIENT_DATA"
+        ? "INSUFFICIENT_DATA"
+        : "READY",
     opportunity,
-    checkedAt:new Date().toISOString(),
+    checkedAt: new Date().toISOString(),
   });
 }
