@@ -1,40 +1,37 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest,NextResponse } from "next/server";
 import { calculateOpportunity } from "@/lib/opportunity/calculate";
+import { rankOpportunities } from "@/lib/opportunity/ranking";
+import { INDIA_LIQUID_UNIVERSE } from "@/lib/opportunity/universe";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
+export const runtime="nodejs";
+export const dynamic="force-dynamic";
 
-export async function GET(request: NextRequest) {
-  const symbol = request.nextUrl.searchParams.get("symbol")?.trim().toUpperCase();
+export async function GET(request:NextRequest){
+  const requested=request.nextUrl.searchParams.get("symbol")?.trim().toUpperCase();
+  const symbols=requested?[requested]:[...INDIA_LIQUID_UNIVERSE];
 
-  if (!symbol) {
-    return NextResponse.json({
-      status: "INSUFFICIENT_DATA",
-      opportunities: [],
-      message:
-        "Verified stock, market, sector, risk and return inputs are required.",
-      checkedAt: new Date().toISOString(),
-    });
-  }
-
-  const opportunity = calculateOpportunity({
+  const opportunities=symbols.map(symbol=>calculateOpportunity({
     symbol,
-    stockScore: null,
-    stockConfidence: 0,
-    marketPulse: null,
-    sectorPulse: null,
-    expectedReturnPct: null,
-    downsidePct: null,
-    riskShield: null,
-    liquidityScore: null,
-  });
+    stockScore:null,
+    stockConfidence:0,
+    marketPulse:null,
+    sectorPulse:null,
+    expectedReturnPct:null,
+    downsidePct:null,
+    riskShield:null,
+    liquidityScore:null,
+  }));
+
+  const ranked=rankOpportunities(opportunities);
 
   return NextResponse.json({
-    status:
-      opportunity.decision === "INSUFFICIENT_DATA"
-        ? "INSUFFICIENT_DATA"
-        : "READY",
-    opportunity,
-    checkedAt: new Date().toISOString(),
+    status:ranked.length?"READY":"INSUFFICIENT_DATA",
+    universeSize:symbols.length,
+    ranked,
+    rejected:opportunities.filter(item=>item.decision==="INSUFFICIENT_DATA").map(item=>item.symbol),
+    message:ranked.length
+      ?"Candidates are ranked from verified inputs."
+      :"Provider aggregation is not yet available; no candidate has been fabricated.",
+    checkedAt:new Date().toISOString(),
   });
 }
