@@ -8,12 +8,11 @@ export default function OpportunitiesPage() {
         <h1>Opportunity Engine</h1>
         <p>Risk-adjusted candidates targeting 10%+ expected return.</p>
       </div>
-
       <section className="page-card">
-        <h2>Opportunity pipeline</h2>
+        <h2>Verified-input gate</h2>
         <p>
-          Candidates appear only when verified stock, market, sector, risk,
-          entry and return inputs are available.
+          The engine only promotes a stock when the underlying score, market
+          regime, sector strength, expected return and risk inputs are verified.
         </p>
         <Link href="/stocks">Open Stock Intelligence →</Link>
       </section>

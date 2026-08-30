@@ -1,10 +1,10 @@
-export interface TradePlanInput {
+export interface PriceLevelsInput {
   entry: number | null;
   stopLoss: number | null;
   target: number | null;
 }
 
-export interface TradePlan {
+export interface PriceLevels {
   entry: number | null;
   stopLoss: number | null;
   target: number | null;
@@ -14,26 +14,18 @@ export interface TradePlan {
   valid: boolean;
 }
 
-export function calculateTradePlan(input: TradePlanInput): TradePlan {
+export function calculatePriceLevels(input: PriceLevelsInput): PriceLevels {
   const { entry, stopLoss, target } = input;
 
   if (
-    entry === null ||
-    stopLoss === null ||
-    target === null ||
-    !Number.isFinite(entry) ||
-    !Number.isFinite(stopLoss) ||
-    !Number.isFinite(target) ||
-    entry <= 0
+    entry === null || stopLoss === null || target === null ||
+    !Number.isFinite(entry) || !Number.isFinite(stopLoss) ||
+    !Number.isFinite(target) || entry <= 0
   ) {
     return {
-      entry,
-      stopLoss,
-      target,
-      upsidePct: null,
-      downsidePct: null,
-      riskReward: null,
-      valid: false,
+      entry, stopLoss, target,
+      upsidePct: null, downsidePct: null,
+      riskReward: null, valid: false,
     };
   }
 
