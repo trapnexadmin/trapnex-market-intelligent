@@ -7,9 +7,9 @@ export default function OpportunitiesPage(){
   const [status,setStatus]=useState("LOADING");
 
   useEffect(()=>{
-    fetch("/api/opportunities?symbol=RELIANCE",{cache:"no-store"})
+    fetch("/api/opportunities",{cache:"no-store"})
       .then(r=>r.json())
-      .then(data=>{setItems(data.ranked??(data.opportunity?[data.opportunity]:[]));setStatus(data.status??"UNAVAILABLE")})
+      .then(data=>{setItems(data.ranked??[]);setStatus(data.status??"UNAVAILABLE")})
       .catch(()=>setStatus("UNAVAILABLE"));
   },[]);
 
@@ -17,11 +17,11 @@ export default function OpportunitiesPage(){
     <div className="page-header">
       <span>DISCOVER · OPPORTUNITIES</span>
       <h1>Opportunity Engine</h1>
-      <p>Strict risk-adjusted screening for 10%+ expected-return candidates.</p>
+      <p>Risk-adjusted 10%+ screening with verified-input gating.</p>
       <strong>{status}</strong>
     </div>
     <section className="page-card">
-      {items.length?<OpportunityTable items={items}/>:<p>No verified opportunity candidate is available.</p>}
+      {items.length?<OpportunityTable items={items}/>:<p>No verified opportunity candidate is currently available.</p>}
     </section>
-  </main>
+  </main>;
 }

@@ -2,7 +2,6 @@ type Opportunity={
   symbol:string;score:number|null;expectedReturnPct:number|null;downsidePct:number|null;
   riskReward:number|null;decision:string;confidence:number
 };
-
 export default function OpportunityTable({items}:{items:Opportunity[]}){
   return <div className="opportunity-table">
     <div className="opportunity-row opportunity-head">
@@ -17,5 +16,5 @@ export default function OpportunityTable({items}:{items:Opportunity[]}){
       <span>{item.confidence}%</span>
       <b>{item.decision}</b>
     </div>)}
-  </div>
+  </div>;
 }
