@@ -1,29 +1,22 @@
-# Phase 5F — Opportunity Universe + Ranking
+# Phase 5F — Opportunity Context Integration
 
-## Verified
-Phase 5A/5B/5C/5D/5E opportunity contracts are present on main.
-The current API correctly uses `opportunity.decision`.
+## Verification
+The repository has Phase 5B/5C/5D/5E opportunity work on `main`. The Opportunity
+API uses `opportunity.decision` and the repository CI status currently reports no
+checks.
 
 ## Implemented
-- India liquid universe boundary
-- ranking helper
-- expected-return model
-- Opportunities page now consumes the universe endpoint
-- ranked table component
-- persistence schema for universe runs/rankings
+- unified Opportunity Context boundary
+- Stock Intelligence adapter
+- expected-return/downside derivation from validated trade levels
+- Opportunity Table with return/downside/risk-reward/confidence
+- persistence for opportunity context snapshots
 
 ## Current limitation
-The repository's separate provider pipelines are not yet aggregated into the
-opportunity endpoint. Therefore the universe correctly returns
-INSUFFICIENT_DATA instead of inventing 10%+ candidates.
+The actual provider aggregation is still intentionally pending. The endpoint
+must not fabricate market/sector/risk/technical inputs, so it may return
+INSUFFICIENT_DATA until those adapters are joined.
 
 ## Next
-Phase 5G:
-- server-side provider aggregation
-- Stock Intelligence context
-- NIFTY Pulse
-- Sector Pulse
-- Risk Shield
-- technical levels
-- real expected return
-- candidate ranking with complete provenance.
+5G — real server-side aggregation of Stock Intelligence + NIFTY Pulse +
+Sector Pulse + Risk Shield + Technical Levels, then ranked 10%+ candidates.
