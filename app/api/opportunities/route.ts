@@ -5,10 +5,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
-  const symbol = request.nextUrl.searchParams
-    .get("symbol")
-    ?.trim()
-    .toUpperCase();
+  const symbol = request.nextUrl.searchParams.get("symbol")?.trim().toUpperCase();
 
   if (!symbol) {
     return NextResponse.json({
@@ -34,7 +31,7 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     status:
-      opportunity.status === "INSUFFICIENT_DATA"
+      opportunity.decision === "INSUFFICIENT_DATA"
         ? "INSUFFICIENT_DATA"
         : "READY",
     opportunity,
