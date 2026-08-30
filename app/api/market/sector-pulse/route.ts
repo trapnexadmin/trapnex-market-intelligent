@@ -1,48 +1,29 @@
-import { NextRequest, NextResponse } from "next/server";
-import { resolveQuotes } from "@/lib/providers/registry";
-import { calculateSectorPulse } from "@/lib/sector-pulse/calculate";
-import type { SectorPulseInputRow } from "@/lib/sector-pulse/types";
+import {NextRequest,NextResponse} from "next/server";
+import {getMarketSnapshots} from "@/lib/providers/registry";
+import {calculateSectorPulse} from "@/lib/market-pulse/sector-pulse";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
+export const runtime="nodejs";
+export const dynamic="force-dynamic";
 
-export async function GET(request: NextRequest) {
-  const sector = request.nextUrl.searchParams.get("sector")?.trim();
-
-  const result = await resolveQuotes([]);
-
-  if (!result.quotes.length) {
+export async function GET(request:NextRequest){
+  const sector=request.nextUrl.searchParams.get("sector")?.trim()||"NIFTY";
+  try{
+    const result=await getMarketSnapshots([]);
+    const pulse=calculateSectorPulse(sector,result.rows);
     return NextResponse.json({
-      status: "INSUFFICIENT_DATA",
-      provider: result.provider,
-      sectors: [],
-      message: "No normalized equity universe is available for sector-pulse calculation.",
-      checkedAt: new Date().toISOString(),
+      status:pulse.score===null?"INSUFFICIENT_DATA":"LIVE",
+      provider:result.provider,
+      fallbackUsed:result.fallbackUsed,
+      pulse,
+      errors:result.errors,
+      checkedAt:new Date().toISOString(),
+    });
+  }catch(error){
+    return NextResponse.json({
+      status:"PROVIDER_ERROR",
+      pulse:calculateSectorPulse(sector,[]),
+      message:error instanceof Error?error.message:"Sector pulse provider error",
+      checkedAt:new Date().toISOString(),
     });
   }
-
-  // Sector/company classification and sector membership are intentionally
-  // data-driven. We do not infer sectors from ticker names.
-  const rows: SectorPulseInputRow[] = [];
-
-  if (sector) {
-    return NextResponse.json({
-      status: "INSUFFICIENT_DATA",
-      provider: result.provider,
-      sector,
-      pulse: calculateSectorPulse(sector, rows),
-      message:
-        "Live quotes are available, but the current sector classification snapshot has not yet been loaded.",
-      checkedAt: new Date().toISOString(),
-    });
-  }
-
-  return NextResponse.json({
-    status: "INSUFFICIENT_DATA",
-    provider: result.provider,
-    sectors: [],
-    message:
-      "Load the current instrument-to-sector classification before calculating Sector Pulse.",
-    checkedAt: new Date().toISOString(),
-  });
 }
