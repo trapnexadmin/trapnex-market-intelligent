@@ -8,7 +8,11 @@ type Opportunity = {
   confidence: number;
 };
 
-export default function OpportunityTable({ items }: { items: Opportunity[] }) {
+export default function OpportunityTable({
+  items,
+}: {
+  items: Opportunity[];
+}) {
   return (
     <div className="opportunity-table">
       <div className="opportunity-row opportunity-head">
@@ -20,12 +24,18 @@ export default function OpportunityTable({ items }: { items: Opportunity[] }) {
           <strong>{item.symbol}</strong>
           <span>{item.score ?? "—"}</span>
           <span>
-            {item.expectedReturnPct == null ? "—" : `${item.expectedReturnPct.toFixed(1)}%`}
+            {item.expectedReturnPct == null
+              ? "—"
+              : `${item.expectedReturnPct.toFixed(1)}%`}
           </span>
           <span>
-            {item.downsidePct == null ? "—" : `${item.downsidePct.toFixed(1)}%`}
+            {item.downsidePct == null
+              ? "—"
+              : `${item.downsidePct.toFixed(1)}%`}
           </span>
-          <span>{item.riskReward == null ? "—" : item.riskReward.toFixed(2)}</span>
+          <span>
+            {item.riskReward == null ? "—" : item.riskReward.toFixed(2)}
+          </span>
           <span>{item.confidence}%</span>
           <b>{item.decision}</b>
         </div>
