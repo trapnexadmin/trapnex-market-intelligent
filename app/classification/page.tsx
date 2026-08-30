@@ -1,31 +1,11 @@
 "use client";
-import { useEffect, useState } from "react";
-export default function ClassificationPage() {
-  const [rows, setRows] = useState<any[]>([]);
-  useEffect(() => {
-    fetch("/api/classification", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((d) => setRows(d.rows ?? []))
-      .catch(() => setRows([]));
-  }, []);
-  return (
-    <main className="page-shell">
-      <div className="page-header">
-        <span>TERMINAL · UNIVERSE</span>
-        <h1>Constituent Classification</h1>
-        <p>Market-cap and sector mapping used by Pulse calculations.</p>
-      </div>
-      <section className="page-card">
-        {rows.map((row) => (
-          <div key={`${row.exchange}:${row.symbol}`}>
-            <strong>{row.symbol}</strong>
-            <span>
-              {" "}
-              · {row.capBucket} · {row.sector}
-            </span>
-          </div>
-        ))}
-      </section>
-    </main>
-  );
+import {useEffect,useState} from "react";
+
+export default function ClassificationPage(){
+ const [data,setData]=useState<any>(null);
+ useEffect(()=>{fetch("/api/classification/status",{cache:"no-store"}).then(r=>r.json()).then(setData).catch(()=>setData({status:"UNAVAILABLE"}))},[]);
+ return <main className="page-shell">
+  <div className="page-header"><span>TERMINAL · UNIVERSE</span><h1>Classification Status</h1><p>Validated cap and sector classification used by market intelligence.</p></div>
+  <section className="page-card"><strong>{data?.status??"LOADING"}</strong><p>Constituents: {data?.count??"—"}</p><p>Sources: {data?.sources?.join(", ")||"—"}</p><p>Effective dates: {data?.effectiveDates?.join(", ")||"—"}</p></section>
+ </main>
 }
