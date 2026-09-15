@@ -13,18 +13,10 @@ export function aggregateProviderContext(
     context.entry !== null &&
     context.target !== null &&
     context.stopLoss !== null
-      ? {
-          entry: context.entry,
-          target: context.target,
-          stopLoss: context.stopLoss,
-        }
+      ? { entry: context.entry, target: context.target, stopLoss: context.stopLoss }
       : buildTechnicalPlan(candles);
 
-  const returns = deriveReturnModel(
-    plan.entry,
-    plan.target,
-    plan.stopLoss,
-  );
+  const returns = deriveReturnModel(plan.entry, plan.target, plan.stopLoss);
 
   return calculateOpportunity({
     symbol,

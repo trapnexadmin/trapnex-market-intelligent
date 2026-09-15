@@ -3,6 +3,7 @@ import { calculateFundamentalQuality } from "./factors/fundamental";
 import { calculateTechnicalStructure } from "./factors/technical";
 import { calculateValuation } from "./factors/valuation";
 import { calculateInstitutionalFlow } from "./factors/institutional";
+import { applyMarketRegimeToStockFactors, type MarketRegimeContext } from "./market-context";
 import type {
   Candle,
   FundamentalSnapshot,
@@ -19,10 +20,11 @@ export interface StockIntelligenceInput {
   sectorAlignment: number | null;
   newsEvent: number | null;
   riskTrapShield: number | null;
+  marketRegime?: MarketRegimeContext;
 }
 
 export function buildStockIntelligence(input: StockIntelligenceInput) {
-  return calculateStockIntelligenceScore({
+  const raw = {
     symbol: input.symbol,
     fundamentalQuality: calculateFundamentalQuality(input.fundamentals),
     technicalStructure: calculateTechnicalStructure(input.candles),
@@ -31,5 +33,11 @@ export function buildStockIntelligence(input: StockIntelligenceInput) {
     sectorAlignment: input.sectorAlignment,
     newsEvent: input.newsEvent,
     riskTrapShield: input.riskTrapShield,
-  });
+  };
+
+  const factors = input.marketRegime
+    ? applyMarketRegimeToStockFactors(raw, input.marketRegime)
+    : raw;
+
+  return calculateStockIntelligenceScore(factors);
 }

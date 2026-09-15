@@ -20,11 +20,9 @@ export function applyMarketRegimeToStockFactors(
 ): StockFactorInput {
   const values = [context.marketPulse, context.capPulse, context.sectorPulse]
     .filter((v): v is number => v !== null && Number.isFinite(v));
-
   if (!values.length) return input;
 
   const combinedPulse = clamp(values.reduce((a,b)=>a+b,0)/values.length);
-
   return {
     ...input,
     sectorAlignment: input.sectorAlignment === null
