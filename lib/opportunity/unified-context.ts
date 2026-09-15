@@ -1,5 +1,6 @@
 import { getMarketSnapshots } from "@/lib/providers/registry";
-import { listClassifications, getClassification } from "@/lib/classification/registry";
+import { getClassification } from "@/lib/classification/registry";
+import { ensureClassificationsLoaded } from "@/lib/classification/bootstrap";
 import { calculateUnifiedPulses } from "@/lib/market-pulse/unified";
 
 export interface UnifiedMarketContext {
@@ -20,7 +21,7 @@ export interface UnifiedMarketContext {
 
 export async function getUnifiedMarketContext(symbol: string): Promise<UnifiedMarketContext> {
   const market = await getMarketSnapshots([]);
-  const classifications = listClassifications();
+  const classifications = await ensureClassificationsLoaded();
   const classification = getClassification(symbol);
 
   if (!market.rows.length || !classifications.length || !classification) {
@@ -47,23 +48,21 @@ export async function getUnifiedMarketContext(symbol: string): Promise<UnifiedMa
 
   const unified = calculateUnifiedPulses(market.rows, classifications);
   const marketPulse = unified.nifty.score;
-  const capPulse =
-    classification.capBucket
-      ? (unified.capPulses as Record<string, { score: number | null }>)[classification.capBucket]?.score ?? null
-      : null;
-  const sectorPulse =
-    classification.sector
-      ? (unified.sectorPulses as Record<string, { score: number | null }>)[classification.sector.toUpperCase()]?.score ?? null
-      : null;
+  const capPulse = classification.capBucket
+    ? (unified.capPulses as Record<string, { score: number | null }>)[classification.capBucket]?.score ?? null
+    : null;
+  const sectorPulse = classification.sector
+    ? (unified.sectorPulses as Record<string, { score: number | null }>)[classification.sector.toUpperCase()]?.score ?? null
+    : null;
 
   const errors = [...market.errors];
   if (capPulse === null) errors.push("CAP_PULSE_UNAVAILABLE");
   if (sectorPulse === null) errors.push("SECTOR_PULSE_UNAVAILABLE");
 
   return {
-    status: marketPulse !== null && capPulse !== null && sectorPulse !== null ? "READY" : "INSUFFICIENT_DATA",
-    marketPulse,
-    sectorPulse,
+    status: marketPulse !== null && capPulse !== null && sectorPulse !== null
+      ? "READY" : "INSUFFICIENT_DATA",
+    marketPulse, sectorPulse,
     classification: {
       capBucket: classification.capBucket,
       sector: classification.sector,
