@@ -57,13 +57,10 @@ export async function runStockIntelligenceBatch(
     const settled = await Promise.all(
       group.map(async (symbol) => {
         try {
-          const capPulse = options.capPulseResolver
-            ? await options.capPulseResolver(symbol)
-            : null;
-
-          const sectorPulse = options.sectorPulseResolver
-            ? await options.sectorPulseResolver(symbol)
-            : null;
+          const [capPulse, sectorPulse] = await Promise.all([
+            options.capPulseResolver?.(symbol) ?? Promise.resolve(null),
+            options.sectorPulseResolver?.(symbol) ?? Promise.resolve(null),
+          ]);
 
           return await buildCompleteStockIntelligence(
             symbol,
@@ -121,8 +118,7 @@ export async function runStockIntelligenceBatch(
   const readyCount = results.filter(
     (row) => row.status === "READY",
   ).length;
-  const insufficientCount =
-    results.length - readyCount;
+  const insufficientCount = results.length - readyCount;
   const errorCount = results.filter(
     (row) => row.errors.length > 0,
   ).length;

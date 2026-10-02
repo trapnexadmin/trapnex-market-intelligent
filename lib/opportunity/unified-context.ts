@@ -6,13 +6,14 @@ import { calculateUnifiedPulses } from "@/lib/market-pulse/unified";
 export interface UnifiedMarketContext {
   status: "READY" | "INSUFFICIENT_DATA";
   marketPulse: number | null;
+  capPulse: number | null;
   sectorPulse: number | null;
   classification: {
     capBucket: "LARGE" | "MID" | "SMALL" | null;
     sector: string | null;
   };
   provenance: {
-    provider: string;
+    provider: string | null;
     classificationCount: number;
     calculatedAt: string;
   };
@@ -20,21 +21,25 @@ export interface UnifiedMarketContext {
 }
 
 export async function getUnifiedMarketContext(symbol: string): Promise<UnifiedMarketContext> {
-  const market = await getMarketSnapshots([]);
-  const classifications = await ensureClassificationsLoaded();
+  const [market, classifications] = await Promise.all([
+    getMarketSnapshots([]),
+    ensureClassificationsLoaded(),
+  ]);
+
   const classification = getClassification(symbol);
 
   if (!market.rows.length || !classifications.length || !classification) {
     return {
       status: "INSUFFICIENT_DATA",
       marketPulse: null,
+      capPulse: null,
       sectorPulse: null,
       classification: {
         capBucket: classification?.capBucket ?? null,
         sector: classification?.sector ?? null,
       },
       provenance: {
-        provider: market.provider,
+        provider: market.provider ?? null,
         classificationCount: classifications.length,
         calculatedAt: new Date().toISOString(),
       },
@@ -49,10 +54,20 @@ export async function getUnifiedMarketContext(symbol: string): Promise<UnifiedMa
   const unified = calculateUnifiedPulses(market.rows, classifications);
   const marketPulse = unified.nifty.score;
   const capPulse = classification.capBucket
-    ? (unified.capPulses as Record<string, { score: number | null }>)[classification.capBucket]?.score ?? null
+    ? (
+        unified.capPulses as Record<
+          string,
+          { score: number | null }
+        >
+      )[classification.capBucket]?.score ?? null
     : null;
   const sectorPulse = classification.sector
-    ? (unified.sectorPulses as Record<string, { score: number | null }>)[classification.sector.toUpperCase()]?.score ?? null
+    ? (
+        unified.sectorPulses as Record<
+          string,
+          { score: number | null }
+        >
+      )[classification.sector.toUpperCase()]?.score ?? null
     : null;
 
   const errors = [...market.errors];
@@ -60,15 +75,21 @@ export async function getUnifiedMarketContext(symbol: string): Promise<UnifiedMa
   if (sectorPulse === null) errors.push("SECTOR_PULSE_UNAVAILABLE");
 
   return {
-    status: marketPulse !== null && capPulse !== null && sectorPulse !== null
-      ? "READY" : "INSUFFICIENT_DATA",
-    marketPulse, sectorPulse,
+    status:
+      marketPulse !== null &&
+      capPulse !== null &&
+      sectorPulse !== null
+        ? "READY"
+        : "INSUFFICIENT_DATA",
+    marketPulse,
+    capPulse,
+    sectorPulse,
     classification: {
       capBucket: classification.capBucket,
       sector: classification.sector,
     },
     provenance: {
-      provider: market.provider,
+      provider: market.provider ?? null,
       classificationCount: classifications.length,
       calculatedAt: new Date().toISOString(),
     },
