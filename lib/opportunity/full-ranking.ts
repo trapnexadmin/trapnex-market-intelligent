@@ -4,6 +4,7 @@ import {
 import { calculateOpportunity } from "./calculate";
 import { buildTechnicalPlan } from "./technical-plan";
 import { deriveReturnModel } from "./return-model";
+import { calculateLiquidityScore } from "./liquidity";
 import {
   buildUnifiedMarketPulseContext,
   getUnifiedMarketContext,
@@ -85,6 +86,11 @@ export async function runFullOpportunityRanking(symbols?: string[]) {
         plan.stopLoss,
       );
 
+      const liquidityScore = calculateLiquidityScore(
+        row.candles ?? [],
+        row.quote?.price ?? null,
+      );
+
       const context = contexts.get(row.symbol);
 
       const opportunity = calculateOpportunity({
@@ -99,13 +105,38 @@ export async function runFullOpportunityRanking(symbols?: string[]) {
           row.corporateActionRisk === null
             ? null
             : Math.max(0, 100 - row.corporateActionRisk),
-        liquidityScore: null,
+        liquidityScore,
       });
 
       return {
         symbol: row.symbol,
         stockIntelligence: row,
         opportunity,
+        liquidity: {
+          score: liquidityScore,
+          source:
+            row.candles?.some((candle) => candle.volume !== null)
+              ? "historical_candle_turnover"
+              : null,
+          windowSessions: Math.min(20, row.candles?.length ?? 0),
+          available:
+            liquidityScore !== null,
+          reason:
+            liquidityScore !== null
+              ? null
+              : (row.candles?.length ?? 0) < 5
+                ? "INSUFFICIENT_CANDLE_HISTORY"
+                : "INSUFFICIENT_VOLUME_DATA",
+        },
+        dataIntegrity: {
+          stockScoreAvailable: row.score !== null,
+          quoteAvailable: row.quote !== null,
+          historicalAvailable: (row.candles?.length ?? 0) >= 50,
+          liquidityAvailable: liquidityScore !== null,
+          marketPulseAvailable: pulseContext.marketPulse !== null,
+          sectorPulseAvailable: context?.sectorPulse !== null,
+          capPulseAvailable: context?.capPulse !== null,
+        },
         classification: context
           ? {
               capBucket: context.capBucket,
@@ -124,6 +155,12 @@ export async function runFullOpportunityRanking(symbols?: string[]) {
   return {
     ...batch,
     marketContext: pulseContext,
+    rankingIntegrity: {
+      liquidityProvider: "historical_candle_turnover",
+      liquidityWindowSessions: 20,
+      missingLiquidityDoesNotCreateSyntheticScore: true,
+      rankedCount: ranked.length,
+    },
     ranked,
   };
 }
