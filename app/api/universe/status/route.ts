@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { listUniverse, universeSize } from "@/lib/universe/registry";
+import { ensureUniverseLoaded } from "@/lib/universe/bootstrap";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  await ensureUniverseLoaded();
   const rows = listUniverse({ activeOnly: false });
   const active = rows.filter((row) => row.active && row.listed);
 

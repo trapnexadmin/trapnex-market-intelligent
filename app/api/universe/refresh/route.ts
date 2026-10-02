@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { deduplicateUniverse, normalizeUniverseRow } from "@/lib/universe/normalize";
 import { validateUniverse } from "@/lib/universe/validation";
 import { replaceUniverse } from "@/lib/universe/registry";
+import { persistUniverseSnapshot } from "@/lib/universe/supabase";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,11 +38,16 @@ export async function POST(request: Request) {
     }
 
     replaceUniverse(normalized);
+    let persisted = false;
+    try { persisted = await persistUniverseSnapshot(normalized); } catch (error) {
+      return NextResponse.json({ status: "PERSISTENCE_ERROR", error: error instanceof Error ? error.message : "UNIVERSE_PERSISTENCE_ERROR" }, { status: 503 });
+    }
 
     return NextResponse.json({
       status: "READY",
       count: normalized.length,
       active: normalized.filter((row) => row.active && row.listed).length,
+      persisted,
       validation,
       refreshedAt: new Date().toISOString(),
     });
