@@ -10,6 +10,7 @@ import { calculateDataQuality } from "./data-quality";
 import { loadValidatedQuote } from "./market-loader";
 import { loadHistoricalCandles } from "./historical-loader";
 import { loadStockNewsContext } from "./news-loader";
+import { getMarketNewsRiskShield } from "./market-news-risk";
 import { resolveFundamentals } from "@/lib/providers/fundamentals/registry";
 import { resolveInstitutionalFlow } from "@/lib/providers/institutional/registry";
 import { getUniverseSymbol } from "@/lib/universe/registry";
@@ -34,6 +35,7 @@ export async function buildCompleteStockIntelligence(
     fundamentalsResult,
     institutionalResult,
     newsContext,
+    marketNewsRisk,
   ] = await Promise.all([
     loadValidatedQuote(symbol),
     loadHistoricalCandles(symbol, {
@@ -52,6 +54,7 @@ export async function buildCompleteStockIntelligence(
         }),
     resolveInstitutionalFlow(symbol),
     loadStockNewsContext(symbol),
+    getMarketNewsRiskShield(),
   ]);
 
   const fundamentals =
@@ -63,7 +66,7 @@ export async function buildCompleteStockIntelligence(
     fundamentalsResult.institutionalFlow ??
     EMPTY_INSTITUTIONAL_FLOW;
 
-  const baseRisk = calculateRiskTrapShield({
+  const stockBaseRisk = calculateRiskTrapShield({
     dangerScore: newsContext.dangerScore,
     leverageRisk: null,
     governanceRisk: null,
@@ -71,16 +74,30 @@ export async function buildCompleteStockIntelligence(
     abnormalPriceVolume: null,
   });
 
-  const actionRisk = newsContext.corporateActionRisk;
-  const riskTrapShield =
-    baseRisk === null && actionRisk === null
+  const localRisk = newsContext.corporateActionRisk;
+  const marketRiskShield = marketNewsRisk.shield;
+
+  const localShield =
+    stockBaseRisk === null && localRisk === null
       ? null
       : Math.max(
           0,
           Math.min(
             100,
-            (baseRisk ?? 100) * 0.85 +
-              (100 - (actionRisk ?? 0)) * 0.15,
+            (stockBaseRisk ?? 100) * 0.85 +
+              (100 - (localRisk ?? 0)) * 0.15,
+          ),
+        );
+
+  const riskTrapShield =
+    localShield === null && marketRiskShield === null
+      ? null
+      : Math.max(
+          0,
+          Math.min(
+            100,
+            (localShield ?? 100) * 0.8 +
+              (marketRiskShield ?? 100) * 0.2,
           ),
         );
 
@@ -115,6 +132,7 @@ export async function buildCompleteStockIntelligence(
     ...fundamentalsResult.errors,
     ...institutionalResult.errors,
     ...newsContext.errors,
+    ...marketNewsRisk.context.errors,
   ];
 
   const dataCompleteness = {
@@ -127,6 +145,8 @@ export async function buildCompleteStockIntelligence(
       fundamentalsResult.institutionalFlow !== null,
     newsEvents: newsContext.events.length > 0,
     corporateActions: newsContext.corporateActions.length > 0,
+    globalMarketNews: marketNewsRisk.context.globalDanger !== null,
+    indiaMarketNews: marketNewsRisk.context.indiaDanger !== null,
   };
 
   const providerQuality = {
@@ -135,7 +155,6 @@ export async function buildCompleteStockIntelligence(
     fundamentals: fundamentalsResult.provider !== null,
     institutional: institutionalResult.provider !== null,
     news: newsContext.provider !== null,
-    corporateActions: newsContext.corporateActions.length > 0,
   };
 
   const historicalQuality = assessHistoricalQuality(history.candles);
@@ -159,6 +178,8 @@ export async function buildCompleteStockIntelligence(
     dangerScore: newsContext.dangerScore,
     corporateActions: newsContext.corporateActions,
     corporateActionRisk: newsContext.corporateActionRisk,
+    marketNews: marketNewsRisk.context,
+    marketNewsRiskShield: marketNewsRisk.shield,
     historicalQuality,
     dataQuality,
     errors,
