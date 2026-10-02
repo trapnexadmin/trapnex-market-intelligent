@@ -30,7 +30,8 @@ export async function runFullOpportunityRanking(symbols?: string[]) {
       )]
     : undefined;
 
-  const rankingUniverse = requested ??
+  const rankingUniverse =
+    requested ??
     listUniverse()
       .filter((row) => row.exchange === "NSE")
       .map((row) => row.symbol);
@@ -41,7 +42,10 @@ export async function runFullOpportunityRanking(symbols?: string[]) {
   await Promise.all(
     rankingUniverse.map(async (symbol) => {
       try {
-        const context = await getUnifiedMarketContext(symbol, pulseContext);
+        const context = await getUnifiedMarketContext(
+          symbol,
+          pulseContext,
+        );
         contexts.set(symbol, {
           sectorPulse: context.sectorPulse,
           capPulse: context.capPulse,
@@ -91,9 +95,10 @@ export async function runFullOpportunityRanking(symbols?: string[]) {
         sectorPulse: context?.sectorPulse ?? null,
         expectedReturnPct: returns.expectedReturnPct,
         downsidePct: returns.downsidePct,
-        riskShield: row.corporateActionRisk === null
-          ? null
-          : Math.max(0, 100 - row.corporateActionRisk),
+        riskShield:
+          row.corporateActionRisk === null
+            ? null
+            : Math.max(0, 100 - row.corporateActionRisk),
         liquidityScore: null,
       });
 
