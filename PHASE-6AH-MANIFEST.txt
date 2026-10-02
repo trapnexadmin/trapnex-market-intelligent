@@ -1,0 +1,4 @@
+Trapnex Market Intelligence — Phase 6AH updated package
+Verified GitHub base: 2eb8c0ac9bffa34ef4d45ca25e583e06b97df945 (Phase 6AG)
+Phase 6AH is prepared locally; GitHub branch creation returned 403 from the connector.
+This package contains only the Phase 6AH changes; existing Phase 6AG+ files remain in the GitHub base.

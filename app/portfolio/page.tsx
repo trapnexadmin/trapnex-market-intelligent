@@ -1,54 +1,151 @@
-"use client";
+use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-type Plan = {
+type Holding = {
+  id?: string;
+  portfolioKey: string;
+  symbol: string;
+  exchange: "NSE" | "BSE";
+  quantity: number;
+  averagePrice: number;
+  notes: string | null;
+};
+
+type Overview = {
   capital: number;
   riskProfile: string;
-  allocations: Array<{
-    symbol: string; capBucket: string | null; sector: string | null;
-    weightPct: number; amount: number; score: number | null;
-    expectedReturnPct: number | null; confidence: number;
-    riskShield: number | null; liquidityScore: number | null;
-    reasons: string[];
+  actualValue: number;
+  holdings: Holding[];
+  comparison: Array<{
+    symbol: string;
+    exchange: string;
+    quantity: number;
+    averagePrice: number;
+    currentValue: number;
+    actualWeightPct: number;
+    targetWeightPct: number;
+    driftPct: number;
+    modelIncluded: boolean;
   }>;
-  unallocatedAmount: number;
-  capExposurePct: Record<string, number>;
-  sectorExposurePct: Record<string, number>;
-  constraints: {
-    minPerStockPct: number; maxPerStockPct: number; maxStocks: number;
-    sectorLimitPct?: number; capLimitsPct: Record<string, number>;
-  };
-  warnings: string[];
+  modelOnly: Array<{
+    symbol: string;
+    targetWeightPct: number;
+    targetAmount: number;
+    sector: string | null;
+    capBucket: string | null;
+  }>;
 };
+
+const money = (value: number) =>
+  `₹${Math.round(value).toLocaleString("en-IN")}`;
 
 export default function PortfolioPage() {
   const [capital, setCapital] = useState("1000000");
   const [riskProfile, setRiskProfile] = useState("BALANCED");
-  const [plan, setPlan] = useState<Plan | null>(null);
+  const [overview, setOverview] = useState<Overview | null>(null);
   const [status, setStatus] = useState("IDLE");
   const [error, setError] = useState("");
+  const [draft, setDraft] = useState({
+    symbol: "",
+    exchange: "NSE" as "NSE" | "BSE",
+    quantity: "",
+    averagePrice: "",
+    notes: "",
+  });
 
-  async function refresh() {
+  const query = useMemo(
+    () =>
+      `portfolioKey=default&capital=${encodeURIComponent(
+        capital,
+      )}&riskProfile=${riskProfile}`,
+    [capital, riskProfile],
+  );
+
+  async function load() {
     setStatus("LOADING");
     setError("");
+
     try {
-      const response = await fetch(
-        `/api/portfolio/allocation?capital=${encodeURIComponent(capital)}&riskProfile=${riskProfile}`,
-        { cache: "no-store" },
-      );
+      const response = await fetch(`/api/portfolio/overview?${query}`, {
+        cache: "no-store",
+      });
       const data = await response.json();
-      if (!response.ok) throw new Error(data?.error ?? "PORTFOLIO_API_ERROR");
-      setPlan(data.plan ?? null);
+
+      if (!response.ok) {
+        throw new Error(data?.error ?? "PORTFOLIO_OVERVIEW_ERROR");
+      }
+
+      setOverview(data);
       setStatus(data.status ?? "READY");
-    } catch (e) {
-      setPlan(null);
+    } catch (error) {
+      setOverview(null);
       setStatus("ERROR");
-      setError(e instanceof Error ? e.message : "PORTFOLIO_API_ERROR");
+      setError(
+        error instanceof Error
+          ? error.message
+          : "PORTFOLIO_OVERVIEW_ERROR",
+      );
     }
   }
 
-  useEffect(() => { void refresh(); }, []);
+  async function saveHolding() {
+    try {
+      const response = await fetch("/api/portfolio/holdings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          portfolioKey: "default",
+          symbol: draft.symbol,
+          exchange: draft.exchange,
+          quantity: Number(draft.quantity),
+          averagePrice: Number(draft.averagePrice),
+          notes: draft.notes || null,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error ?? "SAVE_HOLDING_ERROR");
+      }
+
+      setDraft({
+        symbol: "",
+        exchange: "NSE",
+        quantity: "",
+        averagePrice: "",
+        notes: "",
+      });
+
+      await load();
+    } catch (error) {
+      setError(
+        error instanceof Error ? error.message : "SAVE_HOLDING_ERROR",
+      );
+    }
+  }
+
+  async function removeHolding(symbol: string, exchange: string) {
+    const response = await fetch(
+      `/api/portfolio/holdings?portfolioKey=default&symbol=${encodeURIComponent(
+        symbol,
+      )}&exchange=${encodeURIComponent(exchange)}`,
+      { method: "DELETE" },
+    );
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      setError(data?.error ?? "DELETE_HOLDING_ERROR");
+      return;
+    }
+
+    await load();
+  }
+
+  useEffect(() => {
+    void load();
+  }, []);
 
   return (
     <main className="page-shell">
@@ -56,116 +153,315 @@ export default function PortfolioPage() {
         <div>
           <label>PORTFOLIO INTELLIGENCE</label>
           <h1>Portfolio Allocation</h1>
-          <p>Model-driven allocation built from the opportunity pipeline.</p>
+          <p>
+            Manage holdings and compare your current book with the model
+            allocation.
+          </p>
         </div>
-        <button className="open" onClick={() => void refresh()}>
-          {status === "LOADING" ? "REFRESHING…" : "REFRESH ALLOCATION"}
+        <button className="open" onClick={() => void load()}>
+          {status === "LOADING" ? "REFRESHING…" : "REFRESH"}
         </button>
       </div>
 
       <section className="panel" style={{ padding: 16 }}>
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
+        <div
+          style={{
+            display: "flex",
+            gap: 12,
+            flexWrap: "wrap",
+            alignItems: "end",
+          }}
+        >
           <label style={{ display: "grid", gap: 6 }}>
             <span className="muted">CAPITAL (INR)</span>
             <input
               value={capital}
-              onChange={(e) => setCapital(e.target.value)}
+              onChange={(event) => setCapital(event.target.value)}
               inputMode="numeric"
-              style={{ padding: 10, borderRadius: 7, border: "1px solid var(--border)", background: "#0a1019", color: "var(--text)" }}
             />
           </label>
+
           <label style={{ display: "grid", gap: 6 }}>
             <span className="muted">RISK PROFILE</span>
             <select
               value={riskProfile}
-              onChange={(e) => setRiskProfile(e.target.value)}
-              style={{ padding: 10, borderRadius: 7, border: "1px solid var(--border)", background: "#0a1019", color: "var(--text)" }}
+              onChange={(event) => setRiskProfile(event.target.value)}
             >
               <option>CONSERVATIVE</option>
               <option>BALANCED</option>
               <option>GROWTH</option>
             </select>
           </label>
-          <button className="open" onClick={() => void refresh()}>BUILD PLAN</button>
+
+          <button className="open" onClick={() => void load()}>
+            REBUILD MODEL
+          </button>
         </div>
       </section>
 
-      {error && <section className="panel" style={{ padding: 16, marginTop: 12 }}>{error}</section>}
+      {error && (
+        <section className="panel" style={{ padding: 16, marginTop: 12 }}>
+          {error}
+        </section>
+      )}
 
-      {plan && (
+      {overview && (
         <>
           <section className="topgrid" style={{ marginTop: 12 }}>
             <article className="panel" style={{ padding: 16 }}>
-              <div className="head"><span>CAPITAL</span><b>₹</b></div>
+              <div className="head">
+                <span>ACTUAL BOOK</span>
+                <b>{overview.holdings.length}</b>
+              </div>
               <strong style={{ font: '800 30px "JetBrains Mono"' }}>
-                ₹{plan.capital.toLocaleString("en-IN")}
+                {money(overview.actualValue)}
               </strong>
-              <p className="muted">
-                Unallocated: ₹{plan.unallocatedAmount.toLocaleString("en-IN")}
-              </p>
+              <p className="muted">Recorded cost value</p>
             </article>
+
             <article className="panel" style={{ padding: 16 }}>
-              <div className="head"><span>RISK PROFILE</span></div>
-              <strong style={{ font: '700 24px "JetBrains Mono"' }}>{plan.riskProfile}</strong>
-              <p className="muted">{plan.allocations.length} holdings in current plan</p>
+              <div className="head">
+                <span>MODEL CAPITAL</span>
+              </div>
+              <strong style={{ font: '800 30px "JetBrains Mono"' }}>
+                {money(overview.capital)}
+              </strong>
+              <p className="muted">{overview.riskProfile} profile</p>
             </article>
           </section>
 
+          <section
+            className="panel"
+            style={{ marginTop: 12, padding: 16 }}
+          >
+            <div className="head">
+              <span>ADD / UPDATE HOLDING</span>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns:
+                  "repeat(auto-fit,minmax(140px,1fr))",
+                gap: 10,
+              }}
+            >
+              <input
+                placeholder="SYMBOL"
+                value={draft.symbol}
+                onChange={(event) =>
+                  setDraft({
+                    ...draft,
+                    symbol: event.target.value.toUpperCase(),
+                  })
+                }
+              />
+
+              <select
+                value={draft.exchange}
+                onChange={(event) =>
+                  setDraft({
+                    ...draft,
+                    exchange: event.target.value as "NSE" | "BSE",
+                  })
+                }
+              >
+                <option>NSE</option>
+                <option>BSE</option>
+              </select>
+
+              <input
+                placeholder="QUANTITY"
+                inputMode="decimal"
+                value={draft.quantity}
+                onChange={(event) =>
+                  setDraft({ ...draft, quantity: event.target.value })
+                }
+              />
+
+              <input
+                placeholder="AVG PRICE"
+                inputMode="decimal"
+                value={draft.averagePrice}
+                onChange={(event) =>
+                  setDraft({
+                    ...draft,
+                    averagePrice: event.target.value,
+                  })
+                }
+              />
+
+              <input
+                placeholder="NOTES (OPTIONAL)"
+                value={draft.notes}
+                onChange={(event) =>
+                  setDraft({ ...draft, notes: event.target.value })
+                }
+              />
+
+              <button className="open" onClick={() => void saveHolding()}>
+                SAVE HOLDING
+              </button>
+            </div>
+          </section>
+
           <section className="panel" style={{ marginTop: 12 }}>
-            <div className="head"><span>ALLOCATIONS</span><b>{plan.allocations.length}</b></div>
+            <div className="head">
+              <span>ACTUAL vs MODEL</span>
+              <b>{overview.comparison.length}</b>
+            </div>
+
             <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <table
+                style={{ width: "100%", borderCollapse: "collapse" }}
+              >
                 <thead>
                   <tr>
-                    {["Symbol","Cap","Sector","Weight","Amount","Score","Return","Risk","Liquidity"].map((h) =>
-                      <th key={h} style={{ textAlign:"left", padding:10, color:"#718097", font:"8px JetBrains Mono" }}>{h}</th>)}
+                    {[
+                      "Symbol",
+                      "Actual",
+                      "Target",
+                      "Drift",
+                      "Value",
+                      "Status",
+                      "Action",
+                    ].map((header) => (
+                      <th
+                        key={header}
+                        style={{
+                          textAlign: "left",
+                          padding: 10,
+                          color: "#718097",
+                          font: "8px JetBrains Mono",
+                        }}
+                      >
+                        {header}
+                      </th>
+                    ))}
                   </tr>
                 </thead>
+
                 <tbody>
-                  {plan.allocations.map((a) => (
-                    <tr key={a.symbol} style={{ borderTop:"1px solid #131d29" }}>
-                      <td style={{ padding:10, fontWeight:700 }}>{a.symbol}</td>
-                      <td style={{ padding:10 }}>{a.capBucket ?? "—"}</td>
-                      <td style={{ padding:10 }}>{a.sector ?? "UNCLASSIFIED"}</td>
-                      <td style={{ padding:10 }}>{a.weightPct.toFixed(2)}%</td>
-                      <td style={{ padding:10 }}>₹{a.amount.toLocaleString("en-IN")}</td>
-                      <td style={{ padding:10 }}>{a.score ?? "—"}</td>
-                      <td style={{ padding:10 }}>{a.expectedReturnPct === null ? "—" : `${a.expectedReturnPct.toFixed(2)}%`}</td>
-                      <td style={{ padding:10 }}>{a.riskShield ?? "—"}</td>
-                      <td style={{ padding:10 }}>{a.liquidityScore ?? "—"}</td>
+                  {overview.comparison.map((row) => (
+                    <tr
+                      key={`${row.symbol}-${row.exchange}`}
+                      style={{ borderTop: "1px solid #131d29" }}
+                    >
+                      <td style={{ padding: 10, fontWeight: 700 }}>
+                        {row.symbol}
+                      </td>
+                      <td style={{ padding: 10 }}>
+                        {row.actualWeightPct.toFixed(2)}%
+                      </td>
+                      <td style={{ padding: 10 }}>
+                        {row.targetWeightPct.toFixed(2)}%
+                      </td>
+                      <td style={{ padding: 10 }}>
+                        {row.driftPct.toFixed(2)}%
+                      </td>
+                      <td style={{ padding: 10 }}>
+                        {money(row.currentValue)}
+                      </td>
+                      <td style={{ padding: 10 }}>
+                        {row.modelIncluded
+                          ? "IN MODEL"
+                          : "OUTSIDE MODEL"}
+                      </td>
+                      <td style={{ padding: 10 }}>
+                        <button
+                          onClick={() =>
+                            void removeHolding(
+                              row.symbol,
+                              row.exchange,
+                            )
+                          }
+                        >
+                          REMOVE
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+
+                  {overview.comparison.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={7}
+                        style={{ padding: 16 }}
+                        className="muted"
+                      >
+                        No holdings recorded yet.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section
+            className="panel"
+            style={{ marginTop: 12, padding: 16 }}
+          >
+            <div className="head">
+              <span>MODEL-ONLY WATCHLIST</span>
+              <b>{overview.modelOnly.length}</b>
+            </div>
+
+            <div style={{ overflowX: "auto" }}>
+              <table
+                style={{ width: "100%", borderCollapse: "collapse" }}
+              >
+                <thead>
+                  <tr>
+                    {[
+                      "Symbol",
+                      "Target Weight",
+                      "Target Amount",
+                      "Cap",
+                      "Sector",
+                    ].map((header) => (
+                      <th
+                        key={header}
+                        style={{
+                          textAlign: "left",
+                          padding: 10,
+                          color: "#718097",
+                          font: "8px JetBrains Mono",
+                        }}
+                      >
+                        {header}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {overview.modelOnly.map((row) => (
+                    <tr
+                      key={row.symbol}
+                      style={{ borderTop: "1px solid #131d29" }}
+                    >
+                      <td style={{ padding: 10, fontWeight: 700 }}>
+                        {row.symbol}
+                      </td>
+                      <td style={{ padding: 10 }}>
+                        {row.targetWeightPct.toFixed(2)}%
+                      </td>
+                      <td style={{ padding: 10 }}>
+                        {money(row.targetAmount)}
+                      </td>
+                      <td style={{ padding: 10 }}>
+                        {row.capBucket ?? "—"}
+                      </td>
+                      <td style={{ padding: 10 }}>
+                        {row.sector ?? "UNCLASSIFIED"}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           </section>
-
-          <section className="bottomgrid" style={{ marginTop: 12 }}>
-            <article className="panel" style={{ padding: 16 }}>
-              <div className="head"><span>CAP EXPOSURE</span></div>
-              {Object.entries(plan.capExposurePct).map(([k,v]) =>
-                <p key={k} style={{ display:"flex", justifyContent:"space-between" }}><span>{k}</span><strong>{v.toFixed(2)}%</strong></p>)}
-            </article>
-            <article className="panel" style={{ padding: 16 }}>
-              <div className="head"><span>SECTOR EXPOSURE</span></div>
-              {Object.entries(plan.sectorExposurePct).map(([k,v]) =>
-                <p key={k} style={{ display:"flex", justifyContent:"space-between" }}><span>{k}</span><strong>{v.toFixed(2)}%</strong></p>)}
-            </article>
-            <article className="panel" style={{ padding: 16 }}>
-              <div className="head"><span>GUARDRAILS</span></div>
-              <p className="muted">Per stock: {plan.constraints.minPerStockPct}%–{plan.constraints.maxPerStockPct}%</p>
-              <p className="muted">Max holdings: {plan.constraints.maxStocks}</p>
-              <p className="muted">Large/Mid/Small: {plan.constraints.capLimitsPct.LARGE}% / {plan.constraints.capLimitsPct.MID}% / {plan.constraints.capLimitsPct.SMALL}%</p>
-              <p className="muted">Sector limit: {plan.constraints.sectorLimitPct ?? 30}%</p>
-            </article>
-          </section>
-
-          {plan.warnings.length > 0 && (
-            <section className="panel" style={{ padding: 16, marginTop: 12 }}>
-              <div className="head"><span>WARNINGS</span></div>
-              {plan.warnings.map((warning) => <p key={warning} className="amber">{warning}</p>)}
-            </section>
-          )}
         </>
       )}
     </main>
