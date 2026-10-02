@@ -5,12 +5,16 @@ import {
   EMPTY_INSTITUTIONAL_FLOW,
   EMPTY_VALUATION,
 } from "./default-inputs";
+import { assessHistoricalQuality } from "./historical-quality";
 import { calculateDataQuality } from "./data-quality";
 import { loadValidatedQuote } from "./market-loader";
 import { loadHistoricalCandles } from "./historical-loader";
 import { resolveFundamentals } from "@/lib/providers/fundamentals/registry";
 import { resolveInstitutionalFlow } from "@/lib/providers/institutional/registry";
-import { getCompanyCorporateActions, corporateActionRisk } from "@/lib/news-intelligence/corporate-actions";
+import {
+  getCompanyCorporateActions,
+  corporateActionRisk,
+} from "@/lib/news-intelligence/corporate-actions";
 import { getUniverseSymbol } from "@/lib/universe/registry";
 import { ensureUniverseLoaded } from "@/lib/universe/bootstrap";
 
@@ -27,26 +31,31 @@ export async function buildCompleteStockIntelligence(
   await ensureUniverseLoaded();
   const identity = getUniverseSymbol(symbol, "NSE");
 
-  const [live, history, fundamentalsResult, institutionalResult, corporateActions] =
-    await Promise.all([
-      loadValidatedQuote(symbol),
-      loadHistoricalCandles(symbol, {
-        interval: "ONE_DAY",
-        days: 120,
-      }),
-      identity?.isin
-        ? resolveFundamentals({ symbol, isin: identity.isin })
-        : Promise.resolve({
-            provider: null,
-            asOf: null,
-            fundamentals: null,
-            valuation: null,
-            institutionalFlow: null,
-            errors: ["ISIN_MISSING"],
-          }),
-      resolveInstitutionalFlow(symbol),
-      getCompanyCorporateActions(symbol).catch(() => []),
-    ]);
+  const [
+    live,
+    history,
+    fundamentalsResult,
+    institutionalResult,
+    corporateActions,
+  ] = await Promise.all([
+    loadValidatedQuote(symbol),
+    loadHistoricalCandles(symbol, {
+      interval: "ONE_DAY",
+      days: 120,
+    }),
+    identity?.isin
+      ? resolveFundamentals({ symbol, isin: identity.isin })
+      : Promise.resolve({
+          provider: null,
+          asOf: null,
+          fundamentals: null,
+          valuation: null,
+          institutionalFlow: null,
+          errors: ["ISIN_MISSING"],
+        }),
+    resolveInstitutionalFlow(symbol),
+    getCompanyCorporateActions(symbol).catch(() => []),
+  ]);
 
   const fundamentals =
     fundamentalsResult.fundamentals ?? EMPTY_FUNDAMENTALS;
@@ -130,6 +139,8 @@ export async function buildCompleteStockIntelligence(
     corporateActions: corporateActions.length > 0,
   };
 
+  const historicalQuality = assessHistoricalQuality(history.candles);
+
   const dataQuality = calculateDataQuality({
     score: result,
     providerQuality,
@@ -146,6 +157,7 @@ export async function buildCompleteStockIntelligence(
     instrumentToken: history.instrumentToken,
     corporateActionCount: corporateActions.length,
     corporateActionRisk: actionRisk,
+    historicalQuality,
     dataQuality,
     errors,
     dataCompleteness,
