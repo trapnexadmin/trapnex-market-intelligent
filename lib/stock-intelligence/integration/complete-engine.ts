@@ -9,12 +9,9 @@ import { assessHistoricalQuality } from "./historical-quality";
 import { calculateDataQuality } from "./data-quality";
 import { loadValidatedQuote } from "./market-loader";
 import { loadHistoricalCandles } from "./historical-loader";
+import { loadStockNewsContext } from "./news-loader";
 import { resolveFundamentals } from "@/lib/providers/fundamentals/registry";
 import { resolveInstitutionalFlow } from "@/lib/providers/institutional/registry";
-import {
-  getCompanyCorporateActions,
-  corporateActionRisk,
-} from "@/lib/news-intelligence/corporate-actions";
 import { getUniverseSymbol } from "@/lib/universe/registry";
 import { ensureUniverseLoaded } from "@/lib/universe/bootstrap";
 
@@ -36,7 +33,7 @@ export async function buildCompleteStockIntelligence(
     history,
     fundamentalsResult,
     institutionalResult,
-    corporateActions,
+    newsContext,
   ] = await Promise.all([
     loadValidatedQuote(symbol),
     loadHistoricalCandles(symbol, {
@@ -54,7 +51,7 @@ export async function buildCompleteStockIntelligence(
           errors: ["ISIN_MISSING"],
         }),
     resolveInstitutionalFlow(symbol),
-    getCompanyCorporateActions(symbol).catch(() => []),
+    loadStockNewsContext(symbol),
   ]);
 
   const fundamentals =
@@ -66,24 +63,23 @@ export async function buildCompleteStockIntelligence(
     fundamentalsResult.institutionalFlow ??
     EMPTY_INSTITUTIONAL_FLOW;
 
-  const actionRisk = corporateActionRisk(corporateActions);
-
-  const baseRiskShield = calculateRiskTrapShield({
-    dangerScore: null,
+  const baseRisk = calculateRiskTrapShield({
+    dangerScore: newsContext.dangerScore,
     leverageRisk: null,
     governanceRisk: null,
     liquidityRisk: null,
     abnormalPriceVolume: null,
   });
 
-  const combinedRiskShield =
-    baseRiskShield === null && actionRisk === null
+  const actionRisk = newsContext.corporateActionRisk;
+  const riskTrapShield =
+    baseRisk === null && actionRisk === null
       ? null
       : Math.max(
           0,
           Math.min(
             100,
-            (baseRiskShield ?? 100) * 0.85 +
+            (baseRisk ?? 100) * 0.85 +
               (100 - (actionRisk ?? 0)) * 0.15,
           ),
         );
@@ -95,8 +91,8 @@ export async function buildCompleteStockIntelligence(
     valuation,
     institutionalFlow,
     sectorAlignment: options.sectorPulse ?? null,
-    newsEvent: null,
-    riskTrapShield: combinedRiskShield,
+    newsEvent: newsContext.dangerScore,
+    riskTrapShield,
     marketRegime: {
       marketPulse: options.marketPulse ?? null,
       capPulse: options.capPulse ?? null,
@@ -118,6 +114,7 @@ export async function buildCompleteStockIntelligence(
     ...history.errors,
     ...fundamentalsResult.errors,
     ...institutionalResult.errors,
+    ...newsContext.errors,
   ];
 
   const dataCompleteness = {
@@ -128,7 +125,8 @@ export async function buildCompleteStockIntelligence(
     institutionalFlow:
       institutionalResult.snapshot !== null ||
       fundamentalsResult.institutionalFlow !== null,
-    corporateActions: corporateActions.length > 0,
+    newsEvents: newsContext.events.length > 0,
+    corporateActions: newsContext.corporateActions.length > 0,
   };
 
   const providerQuality = {
@@ -136,7 +134,8 @@ export async function buildCompleteStockIntelligence(
     historical: history.provider !== null,
     fundamentals: fundamentalsResult.provider !== null,
     institutional: institutionalResult.provider !== null,
-    corporateActions: corporateActions.length > 0,
+    news: newsContext.provider !== null,
+    corporateActions: newsContext.corporateActions.length > 0,
   };
 
   const historicalQuality = assessHistoricalQuality(history.candles);
@@ -154,9 +153,12 @@ export async function buildCompleteStockIntelligence(
     historicalProvider: history.provider,
     fundamentalProvider: fundamentalsResult.provider,
     institutionalProvider: institutionalResult.provider ?? null,
+    newsProvider: newsContext.provider,
     instrumentToken: history.instrumentToken,
-    corporateActionCount: corporateActions.length,
-    corporateActionRisk: actionRisk,
+    newsEvents: newsContext.events,
+    dangerScore: newsContext.dangerScore,
+    corporateActions: newsContext.corporateActions,
+    corporateActionRisk: newsContext.corporateActionRisk,
     historicalQuality,
     dataQuality,
     errors,
