@@ -1,14 +1,24 @@
 import { NextResponse } from "next/server";
 import { getFundamentalProviderHealth } from "@/lib/providers/fundamentals/registry";
+import { getInstitutionalProviderHealth } from "@/lib/providers/institutional/registry";
 
-export const runtime="nodejs";
-export const dynamic="force-dynamic";
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const providers = await getFundamentalProviderHealth();
+  const [fundamentals, institutional] = await Promise.all([
+    getFundamentalProviderHealth(),
+    getInstitutionalProviderHealth(),
+  ]);
+
   return NextResponse.json({
-    status: providers.some(p=>p.status==="READY") ? "READY" : "DEGRADED",
-    providers,
+    status:
+      fundamentals.some((p) => p.status === "READY") ||
+      institutional.some((p) => p.status === "READY")
+        ? "READY"
+        : "DEGRADED",
+    fundamentals,
+    institutional,
     checkedAt: new Date().toISOString(),
   });
 }
