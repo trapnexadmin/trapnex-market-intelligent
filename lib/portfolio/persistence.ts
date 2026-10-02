@@ -88,3 +88,38 @@ export async function saveAllocationSnapshot(portfolioKey:string,plan:PortfolioA
   });
   return true;
 }
+
+
+export interface PortfolioSnapshot {
+  id?: string;
+  portfolioKey:string;
+  capital:number;
+  riskProfile:string;
+  allocationPlan:PortfolioAllocationPlan;
+  observedAt?:string;
+}
+
+function mapSnapshot(row:any):PortfolioSnapshot {
+  return {
+    id:row.id,
+    portfolioKey:String(row.portfolio_key),
+    capital:Number(row.capital),
+    riskProfile:String(row.risk_profile),
+    allocationPlan:row.allocation_plan as PortfolioAllocationPlan,
+    observedAt:row.observed_at
+  };
+}
+
+export async function listAllocationSnapshots(
+  portfolioKey:string,
+  limit=20,
+):Promise<PortfolioSnapshot[]> {
+  const key=encodeURIComponent(portfolioKey);
+  const safeLimit=Math.max(1,Math.min(100,Math.floor(Number(limit)||20)));
+  const response=await request(
+    `portfolio_snapshots?select=id,portfolio_key,capital,risk_profile,allocation_plan,observed_at&portfolio_key=eq.${key}&order=observed_at.desc&limit=${safeLimit}`,
+  );
+  if(!response) return [];
+  const rows=await response.json();
+  return rows.map(mapSnapshot);
+}
