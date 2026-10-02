@@ -13,12 +13,8 @@ export interface StockIntelligenceBatchOptions {
   concurrency?: number;
   persist?: boolean;
   marketPulse?: number | null;
-  capPulseResolver?: (
-    symbol: string,
-  ) => Promise<number | null>;
-  sectorPulseResolver?: (
-    symbol: string,
-  ) => Promise<number | null>;
+  capPulseResolver?: (symbol: string) => Promise<number | null>;
+  sectorPulseResolver?: (symbol: string) => Promise<number | null>;
 }
 
 function chunk<T>(rows: T[], size: number) {
@@ -86,10 +82,14 @@ export async function runStockIntelligenceBatch(
             factors: [],
             calculatedAt: new Date().toISOString(),
             quote: null,
+            candles: [],
             marketDataProvider: null,
             historicalProvider: null,
             fundamentalProvider: null,
+            institutionalProvider: null,
             instrumentToken: null,
+            corporateActionCount: 0,
+            corporateActionRisk: null,
             errors: [
               error instanceof Error
                 ? error.message
@@ -101,6 +101,14 @@ export async function runStockIntelligenceBatch(
               fundamentals: false,
               valuation: false,
               institutionalFlow: false,
+              corporateActions: false,
+            },
+            providerQuality: {
+              quote: false,
+              historical: false,
+              fundamentals: false,
+              institutional: false,
+              corporateActions: false,
             },
           };
         }

@@ -8,6 +8,8 @@ import {
 import { loadValidatedQuote } from "./market-loader";
 import { loadHistoricalCandles } from "./historical-loader";
 import { resolveFundamentals } from "@/lib/providers/fundamentals/registry";
+import { resolveInstitutionalFlow } from "@/lib/providers/institutional/registry";
+import { getCompanyCorporateActions, corporateActionRisk } from "@/lib/news-intelligence/corporate-actions";
 import { getUniverseSymbol } from "@/lib/universe/registry";
 import { ensureUniverseLoaded } from "@/lib/universe/bootstrap";
 
@@ -24,31 +26,56 @@ export async function buildCompleteStockIntelligence(
   await ensureUniverseLoaded();
   const identity = getUniverseSymbol(symbol, "NSE");
 
-  const [live, history, fundamentalsResult] = await Promise.all([
-    loadValidatedQuote(symbol),
-    loadHistoricalCandles(symbol, {
-      interval: "ONE_DAY",
-      days: 120,
-    }),
-    identity?.isin
-      ? resolveFundamentals({ symbol, isin: identity.isin })
-      : Promise.resolve({
-          provider: null,
-          asOf: null,
-          fundamentals: null,
-          valuation: null,
-          institutionalFlow: null,
-          errors: ["ISIN_MISSING"],
-        }),
-  ]);
+  const [live, history, fundamentalsResult, institutionalResult, corporateActions] =
+    await Promise.all([
+      loadValidatedQuote(symbol),
+      loadHistoricalCandles(symbol, {
+        interval: "ONE_DAY",
+        days: 120,
+      }),
+      identity?.isin
+        ? resolveFundamentals({ symbol, isin: identity.isin })
+        : Promise.resolve({
+            provider: null,
+            asOf: null,
+            fundamentals: null,
+            valuation: null,
+            institutionalFlow: null,
+            errors: ["ISIN_MISSING"],
+          }),
+      resolveInstitutionalFlow(symbol),
+      getCompanyCorporateActions(symbol).catch(() => []),
+    ]);
 
   const fundamentals =
     fundamentalsResult.fundamentals ?? EMPTY_FUNDAMENTALS;
   const valuation =
     fundamentalsResult.valuation ?? EMPTY_VALUATION;
   const institutionalFlow =
+    institutionalResult.snapshot ??
     fundamentalsResult.institutionalFlow ??
     EMPTY_INSTITUTIONAL_FLOW;
+
+  const actionRisk = corporateActionRisk(corporateActions);
+
+  const riskTrapShield = calculateRiskTrapShield({
+    dangerScore: null,
+    leverageRisk: null,
+    governanceRisk: null,
+    liquidityRisk: null,
+    abnormalPriceVolume: null,
+  });
+
+  const combinedRiskShield =
+    riskTrapShield === null && actionRisk === null
+      ? null
+      : Math.max(
+          0,
+          Math.min(
+            100,
+            (riskTrapShield ?? 100) * 0.85 + (100 - (actionRisk ?? 0)) * 0.15,
+          ),
+        );
 
   const result = buildStockIntelligence({
     symbol,
@@ -58,13 +85,7 @@ export async function buildCompleteStockIntelligence(
     institutionalFlow,
     sectorAlignment: options.sectorPulse ?? null,
     newsEvent: null,
-    riskTrapShield: calculateRiskTrapShield({
-      dangerScore: null,
-      leverageRisk: null,
-      governanceRisk: null,
-      liquidityRisk: null,
-      abnormalPriceVolume: null,
-    }),
+    riskTrapShield: combinedRiskShield,
     marketRegime: {
       marketPulse: options.marketPulse ?? null,
       capPulse: options.capPulse ?? null,
@@ -85,15 +106,20 @@ export async function buildCompleteStockIntelligence(
     ...live.errors,
     ...history.errors,
     ...fundamentalsResult.errors,
+    ...institutionalResult.errors,
   ];
 
   return {
     ...result,
     quote: live.quote,
+    candles: history.candles,
     marketDataProvider: live.provider,
     historicalProvider: history.provider,
     fundamentalProvider: fundamentalsResult.provider,
+    institutionalProvider: institutionalResult.provider ?? null,
     instrumentToken: history.instrumentToken,
+    corporateActionCount: corporateActions.length,
+    corporateActionRisk: actionRisk,
     errors,
     dataCompleteness: {
       quote: live.quote !== null,
@@ -101,7 +127,16 @@ export async function buildCompleteStockIntelligence(
       fundamentals: fundamentalsResult.fundamentals !== null,
       valuation: fundamentalsResult.valuation !== null,
       institutionalFlow:
+        institutionalResult.snapshot !== null ||
         fundamentalsResult.institutionalFlow !== null,
+      corporateActions: corporateActions.length > 0,
+    },
+    providerQuality: {
+      quote: live.provider !== null,
+      historical: history.provider !== null,
+      fundamentals: fundamentalsResult.provider !== null,
+      institutional: institutionalResult.provider !== null,
+      corporateActions: corporateActions.length > 0,
     },
   };
 }

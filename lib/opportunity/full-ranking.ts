@@ -18,17 +18,51 @@ export async function runFullOpportunityRanking(
     : undefined;
 
   let marketPulse: number | null = null;
+  let unifiedMarketForSymbol: (
+    symbol: string,
+  ) => Promise<{ marketPulse: number | null; sectorPulse: number | null; classification: { capBucket: "LARGE" | "MID" | "SMALL" | null } }> =
+    async () => ({ marketPulse: null, sectorPulse: null, classification: { capBucket: null } });
 
   try {
-    const market = await getUnifiedMarketContext();
+    const market = await getUnifiedMarketContext("RELIANCE");
     marketPulse = market.marketPulse;
+    unifiedMarketForSymbol = async (symbol) => {
+      try {
+        return await getUnifiedMarketContext(symbol);
+      } catch {
+        return {
+          marketPulse,
+          sectorPulse: null,
+          classification: { capBucket: null },
+        };
+      }
+    };
   } catch {
     marketPulse = null;
+  }
+
+  const symbolsToRank = requested;
+  const contexts = new Map<string, { sectorPulse: number | null; capBucket: "LARGE" | "MID" | "SMALL" | null }>();
+  if (symbolsToRank) {
+    await Promise.all(symbolsToRank.map(async (symbol) => {
+      const ctx = await unifiedMarketForSymbol(symbol);
+      contexts.set(symbol, {
+        sectorPulse: ctx.sectorPulse,
+        capBucket: ctx.classification.capBucket,
+      });
+    }));
   }
 
   const batch = await runStockIntelligenceBatch({
     symbols: requested,
     marketPulse,
+    capPulseResolver: async (symbol) => {
+      const ctx = contexts.get(symbol);
+      if (!ctx || !ctx.capBucket) return null;
+      return null;
+    },
+    sectorPulseResolver: async (symbol) =>
+      contexts.get(symbol)?.sectorPulse ?? null,
     persist: true,
   });
 
@@ -39,17 +73,8 @@ export async function runFullOpportunityRanking(
         row.score !== null,
     )
     .map((row) => {
-      const candles = row.quote
-        ? [
-            {
-              high: row.quote.high ?? row.quote.price,
-              low: row.quote.low ?? row.quote.price,
-              close: row.quote.price,
-            },
-          ]
-        : [];
+      const plan = buildTechnicalPlan(row.candles ?? []);
 
-      const plan = buildTechnicalPlan(candles);
       const returns = deriveReturnModel(
         plan.entry,
         plan.target,
@@ -61,7 +86,7 @@ export async function runFullOpportunityRanking(
         stockScore: row.score,
         stockConfidence: row.confidence,
         marketPulse,
-        sectorPulse: null,
+        sectorPulse: contexts.get(row.symbol)?.sectorPulse ?? null,
         expectedReturnPct:
           returns.expectedReturnPct,
         downsidePct: returns.downsidePct,
@@ -73,6 +98,7 @@ export async function runFullOpportunityRanking(
         symbol: row.symbol,
         stockIntelligence: row,
         opportunity,
+        classification: contexts.get(row.symbol) ?? null,
       };
     })
     .sort(
