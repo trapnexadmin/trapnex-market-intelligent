@@ -29,10 +29,10 @@ export function calculateOpportunity(input:OpportunityInput,calculatedAt=new Dat
   if(input.marketPulse!==null) reasons.push(`Market pulse: ${input.marketPulse}/100.`);
   if(input.sectorPulse!==null) reasons.push(`Sector pulse: ${input.sectorPulse}/100.`);
   if(input.riskShield!==null) reasons.push(`Risk shield: ${input.riskShield}/100.`);
+  if(input.liquidityScore!==null) reasons.push(`Liquidity score: ${input.liquidityScore}/100.`);
+  else reasons.push("Liquidity score unavailable; no synthetic liquidity value used.");
 
-  const confidence=Math.round(
-    ((components.length+(input.stockConfidence>=50?1:0))/7)*100,
-  );
+  const confidence=Math.round(((components.length+(input.stockConfidence>=50?1:0))/7)*100);
 
   let decision:Opportunity["decision"]="INSUFFICIENT_DATA";
   if(score!==null && confidence>=60){
