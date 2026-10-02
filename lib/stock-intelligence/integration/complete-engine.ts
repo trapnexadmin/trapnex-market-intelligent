@@ -5,6 +5,7 @@ import {
   EMPTY_INSTITUTIONAL_FLOW,
   EMPTY_VALUATION,
 } from "./default-inputs";
+import { calculateDataQuality } from "./data-quality";
 import { loadValidatedQuote } from "./market-loader";
 import { loadHistoricalCandles } from "./historical-loader";
 import { resolveFundamentals } from "@/lib/providers/fundamentals/registry";
@@ -58,7 +59,7 @@ export async function buildCompleteStockIntelligence(
 
   const actionRisk = corporateActionRisk(corporateActions);
 
-  const riskTrapShield = calculateRiskTrapShield({
+  const baseRiskShield = calculateRiskTrapShield({
     dangerScore: null,
     leverageRisk: null,
     governanceRisk: null,
@@ -67,13 +68,14 @@ export async function buildCompleteStockIntelligence(
   });
 
   const combinedRiskShield =
-    riskTrapShield === null && actionRisk === null
+    baseRiskShield === null && actionRisk === null
       ? null
       : Math.max(
           0,
           Math.min(
             100,
-            (riskTrapShield ?? 100) * 0.85 + (100 - (actionRisk ?? 0)) * 0.15,
+            (baseRiskShield ?? 100) * 0.85 +
+              (100 - (actionRisk ?? 0)) * 0.15,
           ),
         );
 
@@ -109,6 +111,30 @@ export async function buildCompleteStockIntelligence(
     ...institutionalResult.errors,
   ];
 
+  const dataCompleteness = {
+    quote: live.quote !== null,
+    historicalCandles: history.candles.length >= 50,
+    fundamentals: fundamentalsResult.fundamentals !== null,
+    valuation: fundamentalsResult.valuation !== null,
+    institutionalFlow:
+      institutionalResult.snapshot !== null ||
+      fundamentalsResult.institutionalFlow !== null,
+    corporateActions: corporateActions.length > 0,
+  };
+
+  const providerQuality = {
+    quote: live.provider !== null,
+    historical: history.provider !== null,
+    fundamentals: fundamentalsResult.provider !== null,
+    institutional: institutionalResult.provider !== null,
+    corporateActions: corporateActions.length > 0,
+  };
+
+  const dataQuality = calculateDataQuality({
+    score: result,
+    providerQuality,
+  });
+
   return {
     ...result,
     quote: live.quote,
@@ -120,23 +146,9 @@ export async function buildCompleteStockIntelligence(
     instrumentToken: history.instrumentToken,
     corporateActionCount: corporateActions.length,
     corporateActionRisk: actionRisk,
+    dataQuality,
     errors,
-    dataCompleteness: {
-      quote: live.quote !== null,
-      historicalCandles: history.candles.length >= 50,
-      fundamentals: fundamentalsResult.fundamentals !== null,
-      valuation: fundamentalsResult.valuation !== null,
-      institutionalFlow:
-        institutionalResult.snapshot !== null ||
-        fundamentalsResult.institutionalFlow !== null,
-      corporateActions: corporateActions.length > 0,
-    },
-    providerQuality: {
-      quote: live.provider !== null,
-      historical: history.provider !== null,
-      fundamentals: fundamentalsResult.provider !== null,
-      institutional: institutionalResult.provider !== null,
-      corporateActions: corporateActions.length > 0,
-    },
+    dataCompleteness,
+    providerQuality,
   };
 }

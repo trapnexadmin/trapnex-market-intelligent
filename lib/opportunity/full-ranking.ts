@@ -4,7 +4,10 @@ import {
 import { calculateOpportunity } from "./calculate";
 import { buildTechnicalPlan } from "./technical-plan";
 import { deriveReturnModel } from "./return-model";
-import { getUnifiedMarketContext } from "./unified-context";
+import {
+  buildUnifiedMarketPulseContext,
+  getUnifiedMarketContext,
+} from "./unified-context";
 import { listUniverse } from "@/lib/universe/registry";
 import { ensureUniverseLoaded } from "@/lib/universe/bootstrap";
 
@@ -16,9 +19,7 @@ interface SymbolContext {
   capBucket: CapBucket;
 }
 
-export async function runFullOpportunityRanking(
-  symbols?: string[],
-) {
+export async function runFullOpportunityRanking(symbols?: string[]) {
   await ensureUniverseLoaded();
 
   const requested = symbols?.length
@@ -34,43 +35,31 @@ export async function runFullOpportunityRanking(
       .filter((row) => row.exchange === "NSE")
       .map((row) => row.symbol);
 
+  const pulseContext = await buildUnifiedMarketPulseContext();
   const contexts = new Map<string, SymbolContext>();
-  let marketPulse: number | null = null;
 
-  const contextResults = await Promise.all(
+  await Promise.all(
     rankingUniverse.map(async (symbol) => {
       try {
-        return {
-          symbol,
-          context: await getUnifiedMarketContext(symbol),
-        };
+        const context = await getUnifiedMarketContext(symbol, pulseContext);
+        contexts.set(symbol, {
+          sectorPulse: context.sectorPulse,
+          capPulse: context.capPulse,
+          capBucket: context.classification.capBucket,
+        });
       } catch {
-        return {
-          symbol,
-          context: null,
-        };
+        contexts.set(symbol, {
+          sectorPulse: null,
+          capPulse: null,
+          capBucket: null,
+        });
       }
     }),
   );
 
-  for (const item of contextResults) {
-    const ctx = item.context;
-    if (!ctx) continue;
-
-    if (marketPulse === null && ctx.marketPulse !== null) {
-      marketPulse = ctx.marketPulse;
-    }
-
-    contexts.set(item.symbol, {
-      sectorPulse: ctx.sectorPulse,
-      capPulse: null,
-      capBucket: ctx.classification.capBucket,
-    });
-  }
-
   const batch = await runStockIntelligenceBatch({
     symbols: requested,
-    marketPulse,
+    marketPulse: pulseContext.marketPulse,
     capPulseResolver: async (symbol) =>
       contexts.get(symbol)?.capPulse ?? null,
     sectorPulseResolver: async (symbol) =>
@@ -98,7 +87,7 @@ export async function runFullOpportunityRanking(
         symbol: row.symbol,
         stockScore: row.score,
         stockConfidence: row.confidence,
-        marketPulse,
+        marketPulse: pulseContext.marketPulse,
         sectorPulse: context?.sectorPulse ?? null,
         expectedReturnPct: returns.expectedReturnPct,
         downsidePct: returns.downsidePct,
@@ -129,6 +118,7 @@ export async function runFullOpportunityRanking(
 
   return {
     ...batch,
+    marketContext: pulseContext,
     ranked,
   };
 }
