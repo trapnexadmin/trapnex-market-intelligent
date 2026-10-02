@@ -1,7 +1,4 @@
-import type {
-  MarketNewsContext,
-  MarketNewsEvent,
-} from "./market-types";
+import type { MarketNewsContext, MarketNewsEvent } from "./market-types";
 
 function envBoolean(name: string) {
   return process.env[name] === "true";
@@ -19,11 +16,21 @@ function numberValue(value: unknown) {
   return Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : null;
 }
 
+function eventDate(value: unknown) {
+  const text = textValue(value);
+  if (!text) return null;
+  const date = new Date(text);
+  return Number.isFinite(date.getTime()) ? date : null;
+}
+
+function maxAgeHours() {
+  const configured = Number(process.env.MARKET_NEWS_MAX_AGE_HOURS ?? 24);
+  return Number.isFinite(configured) ? Math.max(1, Math.min(configured, 168)) : 24;
+}
+
 export async function getMarketNewsContext(): Promise<MarketNewsContext> {
   const checkedAt = new Date().toISOString();
 
-  // Provider boundary is intentionally disabled until an approved
-  // production market-news source is configured. No synthetic events.
   if (!envBoolean("MARKET_NEWS_ENABLED")) {
     return {
       globalDanger: null,
@@ -58,45 +65,59 @@ export async function getMarketNewsContext(): Promise<MarketNewsContext> {
       cache: "no-store",
     });
 
-    if (!response.ok) {
-      throw new Error(`MARKET_NEWS_HTTP_${response.status}`);
-    }
+    if (!response.ok) throw new Error(`MARKET_NEWS_HTTP_${response.status}`);
 
     const payload = await response.json();
     const rows = Array.isArray(payload)
       ? payload
       : Array.isArray(payload?.events)
         ? payload.events
-        : [];
+        : null;
 
-    const events: MarketNewsEvent[] = rows
+    if (!rows) {
+      throw new Error("MARKET_NEWS_PAYLOAD_INVALID");
+    }
+
+    const cutoff = Date.now() - maxAgeHours() * 60 * 60 * 1000;
+    const errors: string[] = [];
+
+    const events = rows
       .map((row: any, index: number) => {
         const title = textValue(row?.title);
-        const publishedAt =
-          textValue(row?.publishedAt) ??
-          textValue(row?.published_at) ??
-          checkedAt;
+        if (!title) {
+          errors.push(`EVENT_${index}_TITLE_MISSING`);
+          return null;
+        }
 
-        if (!title) return null;
+        const rawScope = String(row?.scope ?? "").toUpperCase();
+        if (rawScope !== "GLOBAL" && rawScope !== "INDIA") {
+          errors.push(`EVENT_${index}_SCOPE_INVALID`);
+          return null;
+        }
 
-        const scope =
-          String(row?.scope ?? "").toUpperCase() === "GLOBAL"
-            ? "GLOBAL"
-            : "INDIA";
+        const publishedAt = eventDate(row?.publishedAt ?? row?.published_at);
+        if (!publishedAt) {
+          errors.push(`EVENT_${index}_TIMESTAMP_INVALID`);
+          return null;
+        }
+
+        if (publishedAt.getTime() < cutoff) return null;
+
+        const dangerScore = numberValue(row?.dangerScore ?? row?.danger_score);
+        if (dangerScore === null) {
+          errors.push(`EVENT_${index}_DANGER_SCORE_INVALID`);
+          return null;
+        }
 
         return {
-          id: String(row?.id ?? `${scope}-${index}-${title}`),
-          scope,
+          id: String(row?.id ?? `${rawScope}-${index}-${title}`),
+          scope: rawScope,
           title,
-          summary:
-            textValue(row?.summary) ??
-            textValue(row?.description),
+          summary: textValue(row?.summary) ?? textValue(row?.description),
           url: textValue(row?.url),
           source: textValue(row?.source) ?? "UNKNOWN",
-          publishedAt,
-          dangerScore: numberValue(
-            row?.dangerScore ?? row?.danger_score,
-          ),
+          publishedAt: publishedAt.toISOString(),
+          dangerScore,
         } satisfies MarketNewsEvent;
       })
       .filter(Boolean) as MarketNewsEvent[];
@@ -104,12 +125,11 @@ export async function getMarketNewsContext(): Promise<MarketNewsContext> {
     const score = (scope: "GLOBAL" | "INDIA") => {
       const values = events
         .filter((event) => event.scope === scope)
-        .map((event) => event.dangerScore)
-        .filter((value): value is number => value !== null);
+        .map((event) => event.dangerScore);
 
       return values.length
         ? Math.round(
-            (values.reduce((a, b) => a + b, 0) / values.length) * 10,
+            (values.reduce((sum, value) => sum + value, 0) / values.length) * 10,
           ) / 10
         : null;
     };
@@ -118,9 +138,10 @@ export async function getMarketNewsContext(): Promise<MarketNewsContext> {
       globalDanger: score("GLOBAL"),
       indiaDanger: score("INDIA"),
       events,
-      provider: textValue(response.headers.get("x-provider")) ?? "MARKET_NEWS",
+      provider:
+        textValue(response.headers.get("x-provider")) ?? "MARKET_NEWS",
       checkedAt,
-      errors: [],
+      errors,
     };
   } catch (error) {
     return {
@@ -130,9 +151,7 @@ export async function getMarketNewsContext(): Promise<MarketNewsContext> {
       provider: null,
       checkedAt,
       errors: [
-        error instanceof Error
-          ? error.message
-          : "MARKET_NEWS_PROVIDER_ERROR",
+        error instanceof Error ? error.message : "MARKET_NEWS_PROVIDER_ERROR",
       ],
     };
   }
